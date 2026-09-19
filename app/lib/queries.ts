@@ -4,7 +4,8 @@ export type Question = {
   id: string; source: string; site: string | null; company: string | null
   company_slug: string | null; title: string; url: string; excerpt: string | null
   rank: number | null; why: string | null; comments: number; asked_at: string | null
-  status: string; answer_url: string | null; starred: boolean
+  status: string; answered_at: string | null; answer_url: string | null
+  note: string | null; starred: boolean
 }
 export type Job = {
   id: string; company: string; company_slug: string | null; title: string; url: string | null
