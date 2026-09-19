@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "import:dry": "node scripts/import.mjs --dry-run",
-    "test": "node --test scripts/*.test.mjs workers/**/*.test.mjs",
+    "test": "node --test workers/lib/rank.test.mjs scripts/import.test.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

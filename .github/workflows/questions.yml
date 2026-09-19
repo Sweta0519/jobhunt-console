@@ -1,0 +1,53 @@
+name: questions
+
+# Refreshes the community-question list every morning so the console is current
+# whether or not her laptop is on. Free: Actions minutes are unlimited on a
+# public repository.
+on:
+  schedule:
+    # 05:40 UTC — before the Berlin working day, and off the hour where
+    # GitHub's scheduler is most congested.
+    - cron: '40 5 * * *'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Look-back window in days'
+        default: '7'
+
+concurrency:
+  group: questions
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Refresh questions
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # The workflow token is enough for public search and discussions.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node workers/questions.mjs --days "${{ inputs.days || 7 }}"
+
+      - name: Keep the schedule alive
+        # GitHub disables scheduled workflows in a public repo after 60 days of
+        # no repository activity. This commit is the activity.
+        run: |
+          mkdir -p .state
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .state/questions-last-run
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .state/questions-last-run
+          git diff --quiet --cached || git commit -m "chore: questions refreshed [skip ci]"
+          git push
