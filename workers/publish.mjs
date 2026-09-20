@@ -110,12 +110,15 @@ async function main() {
     await finish(true, { published: 0, reason: 'nothing approved for today' });
     return;
   }
-  if (row.status === 'published' && !args.force) {
+  // A dry run publishes nothing, so it may preview a draft. Only the real
+  // publish path insists on an approval.
+  const preview = !!args['dry-run'];
+  if (row.status === 'published' && !args.force && !preview) {
     console.log(`${row.id} is already published: ${row.published_url}`);
     await finish(true, { published: 0, reason: 'already published' });
     return;
   }
-  if (!['approved', 'rendered'].includes(row.status) && !args.force) {
+  if (!['approved', 'rendered'].includes(row.status) && !args.force && !preview) {
     console.log(`${row.id} is ${row.status}, not approved; refusing`);
     await finish(true, { published: 0, reason: `status ${row.status}` });
     return;
@@ -125,7 +128,13 @@ async function main() {
   await fetchAssets();
 
   const item = toItem(row);
-  const cfg = { author: { name: 'Sweta Sahoo' }, chromePath: chromePath() };
+  // The minimal card templates read colours from config; the poster templates
+  // carry their own palette. Both must be present or a `tool` card throws.
+  const cfg = {
+    author: { name: 'Sweta Sahoo', title: 'Senior Customer Support Engineer' },
+    theme: { accent: '#0F6E56', bg: '#FFFFFF', panel: '#F5F7FA', text: '#0F172A', muted: '#5B6472' },
+    chromePath: chromePath(),
+  };
   mkdirSync(join(DATA_DIR, 'out', row.id), { recursive: true });
 
   let rendered = { files: [], pdf: null };
