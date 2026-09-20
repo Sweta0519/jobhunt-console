@@ -176,7 +176,10 @@ export default async function Today() {
             {d.followups.map((o) => (
               <article key={o.id} className="card">
                 <div className="spread">
-                  <h3 className="card-title">{o.person_name}</h3>
+                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Logo name={o.person_name} slug={o.person_name} size={26} />
+                    {o.person_name}
+                  </h3>
                   <StatusBadge status={o.status} />
                 </div>
                 <div className="card-meta">

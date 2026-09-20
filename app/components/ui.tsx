@@ -1,10 +1,11 @@
 import Link from 'next/link'
+import { ThemeToggle } from './ThemeToggle'
 
 /**
  * The only component allowed to print a status word.
  *
  * One rule runs through the whole console: "approved" must never read as
- * "sent". Teal is reserved for something that actually happened and has an
+ * "sent". Green is reserved for something that actually happened and has an
  * artifact to point at; anything still waiting on her is amber. Every badge
  * carries a glyph as well as colour, so a quick glance is never decided by hue.
  */
@@ -132,6 +133,7 @@ export function NavBar({ current, waiting }: { current: string; waiting: number 
                 {l.href === '/approvals' && waiting > 0 ? ` (${waiting})` : ''}
               </Link>
             ))}
+            <ThemeToggle />
           </nav>
         </div>
       </header>

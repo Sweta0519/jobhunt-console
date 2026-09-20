@@ -14,7 +14,7 @@ export type Job = {
   first_seen_at: string; posted_date: string | null
 }
 export type Outreach = {
-  id: string; person_name: string; person_url: string | null; company: string | null
+  id: string; person_id: string | null; person_name: string; person_url: string | null; company: string | null
   company_slug: string | null; channel: string; kind: string; body: string | null
   reason: string | null; status: string; created_at: string; sent_at: string | null
   replied_at: string | null; followup_due_at: string | null

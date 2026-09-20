@@ -46,7 +46,10 @@ export default async function OutreachPage() {
             {done.map((o) => (
               <article key={o.id} className="card">
                 <div className="spread">
-                  <h3 className="card-title">{o.person_name}</h3>
+                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Logo name={o.person_name} slug={o.person_id ?? o.person_name} size={28} />
+                    {o.person_name}
+                  </h3>
                   <StatusBadge status={o.status} />
                 </div>
                 <div className="card-meta">
@@ -65,7 +68,10 @@ function Row({ o }: { o: Outreach }) {
   return (
     <article className="card">
       <div className="spread">
-        <h3 className="card-title">{o.person_name}</h3>
+        <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Logo name={o.person_name} slug={o.person_id ?? o.person_name} size={28} />
+          {o.person_name}
+        </h3>
         <StatusBadge status={o.status} />
       </div>
       <div className="card-meta">
