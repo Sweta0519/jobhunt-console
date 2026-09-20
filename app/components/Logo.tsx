@@ -25,19 +25,25 @@ export function Logo({
   name,
   slug,
   path,
+  src,
   size = 28,
+  round,
 }: {
   name: string | null
   slug?: string | null
+  /** Object path in the public logos bucket. */
   path?: string | null
+  /** A ready-made URL, used for signed avatars from the private bucket. */
+  src?: string | null
   size?: number
+  round?: boolean
 }) {
   const label = name || slug || '?'
   const box: React.CSSProperties = {
     width: size,
     height: size,
     minWidth: size,
-    borderRadius: size > 32 ? 8 : 6,
+    borderRadius: round ? '50%' : size > 32 ? 8 : 6,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -46,16 +52,17 @@ export function Logo({
     background: 'var(--surface)',
   }
 
-  if (path) {
+  const url = src || (path ? BUCKET + encodeURIComponent(path) : null)
+  if (url) {
     return (
       <span style={box} aria-hidden="true">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={BUCKET + encodeURIComponent(path)}
+          src={url}
           alt=""
-          width={size - 6}
-          height={size - 6}
-          style={{ objectFit: 'contain' }}
+          width={src ? size : size - 6}
+          height={src ? size : size - 6}
+          style={{ objectFit: src ? 'cover' : 'contain', borderRadius: round ? '50%' : undefined }}
           loading="lazy"
         />
       </span>
@@ -65,7 +72,7 @@ export function Logo({
   const c = monogramColour(slug || label)
   return (
     <span
-      style={{ ...box, background: c.bg, border: 'none', color: c.fg, fontSize: Math.round(size * 0.4), fontWeight: 700 }}
+      style={{ ...box, background: c.bg, border: 'none', color: c.fg, fontSize: Math.round(size * 0.4), fontWeight: 600 }}
       aria-hidden="true"
     >
       {initials(label)}

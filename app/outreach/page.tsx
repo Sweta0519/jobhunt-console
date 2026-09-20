@@ -1,4 +1,5 @@
 import { requireOwner } from '../lib/supabase'
+import { peopleAvatars } from '../lib/avatars'
 import type { Outreach } from '../lib/queries'
 import { outreachPrompt, linkedinChatUrl } from '../lib/prompts'
 import { NavBar, Section, Empty, StatusBadge, relative } from '../components/ui'
@@ -12,11 +13,10 @@ export const metadata = { title: 'Outreach' }
 
 export default async function OutreachPage() {
   const { supabase } = await requireOwner()
-  const { data } = await supabase
-    .from('outreach')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(200)
+  const [{ data }, avatars] = await Promise.all([
+    supabase.from('outreach').select('*').order('created_at', { ascending: false }).limit(200),
+    peopleAvatars(supabase),
+  ])
   const rows = (data as Outreach[]) || []
 
   const waiting = rows.filter((o) => ['draft', 'approved'].includes(o.status))
@@ -34,11 +34,11 @@ export default async function OutreachPage() {
         </p>
 
         <Section title={`Ready to send (${waiting.length})`}>
-          {waiting.length === 0 ? <Empty>Nothing ready.</Empty> : waiting.map((o) => <Row key={o.id} o={o} />)}
+          {waiting.length === 0 ? <Empty>Nothing ready.</Empty> : waiting.map((o) => <Row key={o.id} o={o} avatar={avatars.get(o.person_id ?? '')} />)}
         </Section>
 
         <Section title={`Awaiting a reply (${live.length})`}>
-          {live.length === 0 ? <Empty>Nothing outstanding.</Empty> : live.map((o) => <Row key={o.id} o={o} />)}
+          {live.length === 0 ? <Empty>Nothing outstanding.</Empty> : live.map((o) => <Row key={o.id} o={o} avatar={avatars.get(o.person_id ?? '')} />)}
         </Section>
 
         {done.length > 0 && (
@@ -47,7 +47,13 @@ export default async function OutreachPage() {
               <article key={o.id} className="card">
                 <div className="spread">
                   <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Logo name={o.person_name} slug={o.person_id ?? o.person_name} size={28} />
+                    <Logo
+                      name={o.person_name}
+                      slug={o.person_id ?? o.person_name}
+                      src={avatars.get(o.person_id ?? '')}
+                      size={28}
+                      round
+                    />
                     {o.person_name}
                   </h3>
                   <StatusBadge status={o.status} />
@@ -64,12 +70,12 @@ export default async function OutreachPage() {
   )
 }
 
-function Row({ o }: { o: Outreach }) {
+function Row({ o, avatar }: { o: Outreach; avatar?: string }) {
   return (
     <article className="card">
       <div className="spread">
         <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Logo name={o.person_name} slug={o.person_id ?? o.person_name} size={28} />
+          <Logo name={o.person_name} slug={o.person_id ?? o.person_name} src={avatar} size={28} round />
           {o.person_name}
         </h3>
         <StatusBadge status={o.status} />

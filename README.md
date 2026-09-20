@@ -110,6 +110,22 @@ GitHub's 60-day inactivity cut-off for public repositories.
 
 ---
 
+## Images
+
+Two buckets, deliberately different.
+
+**`logos` is public.** Company favicons are brand assets. A worker fetches each
+one once and serves it from here, rather than hot-linking a favicon service that
+would otherwise learn, on every page view, which companies are being tracked.
+
+**`avatars` is private.** A person's photograph is not a brand asset, so these
+are read through signed URLs that expire within the hour, and never sit on a
+guessable address. They are fetched only for people with a live conversation
+(nine today, not the 418 contacts), from the owner's own signed-in browser while
+she is looking at that profile anyway, and `--prune` deletes a photo once the
+conversation is skipped or closed. Everything falls back to an initials
+monogram, so nothing is ever a broken image.
+
 ## Checks
 
 ```bash
