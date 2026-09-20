@@ -3,7 +3,9 @@ import type { Outreach } from '../lib/queries'
 import { outreachPrompt, linkedinChatUrl } from '../lib/prompts'
 import { NavBar, Section, Empty, StatusBadge, relative } from '../components/ui'
 import { ActionButton, CopyButton } from '../components/ActionButton'
-import { markOutreachSent, markOutreachReplied, skipOutreach } from '../actions'
+import { Logo } from '../components/Logo'
+import { Expandable, InlineEdit } from '../components/Interactive'
+import { markOutreachSent, markOutreachReplied, skipOutreach, editOutreach } from '../actions'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Outreach' }
@@ -75,7 +77,7 @@ function Row({ o }: { o: Outreach }) {
           {o.reason}
         </p>
       )}
-      {o.body && <div className="card-body">{o.body}</div>}
+      {o.body && <Expandable text={o.body} />}
       <div className="row" style={{ marginTop: 12 }}>
         {o.body && <CopyButton text={o.body} label="Copy text" />}
         {o.person_url && (

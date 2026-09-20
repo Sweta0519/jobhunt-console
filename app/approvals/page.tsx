@@ -3,7 +3,9 @@ import { requireOwner } from '../lib/supabase'
 import { captionText, type Outreach, type Post } from '../lib/queries'
 import { NavBar, Section, Empty, StatusBadge, formatDay, relative } from '../components/ui'
 import { ActionButton, CopyButton } from '../components/ActionButton'
-import { approveOutreach, skipOutreach, markOutreachSent, approvePost, skipPost } from '../actions'
+import { Logo } from '../components/Logo'
+import { Expandable, InlineEdit } from '../components/Interactive'
+import { approveOutreach, skipOutreach, markOutreachSent, approvePost, skipPost, editOutreach } from '../actions'
 import { linkedinChatUrl } from '../lib/prompts'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +14,7 @@ export const metadata = { title: 'Approvals' }
 export default async function Approvals() {
   const { supabase } = await requireOwner()
 
-  const [outreachRes, postsRes] = await Promise.all([
+  const [outreachRes, postsRes, cosRes] = await Promise.all([
     supabase
       .from('outreach')
       .select('*')
@@ -23,7 +25,9 @@ export default async function Approvals() {
       .select('*')
       .in('status', ['draft', 'approved', 'rendered'])
       .order('post_date'),
+    supabase.from('companies').select('slug,logo_path'),
   ])
+  const logos = new Map((cosRes.data || []).map((c) => [c.slug, c.logo_path as string | null]))
 
   const outreach = (outreachRes.data as Outreach[]) || []
   const posts = (postsRes.data as Post[]) || []
@@ -60,7 +64,7 @@ export default async function Approvals() {
                   <div className="card-meta">
                     {when} · {p.format} · {p.pillar}
                   </div>
-                  {p.caption && <div className="card-body">{captionText(p.caption)}</div>}
+                  {p.caption && <Expandable text={captionText(p.caption)} />}
                   <div className="row" style={{ marginTop: 12 }}>
                     {p.status === 'draft' && (
                       <ActionButton
@@ -96,7 +100,10 @@ export default async function Approvals() {
             outreach.map((o) => (
               <article key={o.id} className="card">
                 <div className="spread">
-                  <h3 className="card-title">{o.person_name}</h3>
+                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Logo name={o.company} slug={o.company_slug} path={logos.get(o.company_slug ?? '')} size={24} />
+                    {o.person_name}
+                  </h3>
                   <StatusBadge status={o.status} />
                 </div>
                 <div className="card-meta">
@@ -108,7 +115,7 @@ export default async function Approvals() {
                     {o.reason}
                   </p>
                 )}
-                {o.body && <div className="card-body">{o.body}</div>}
+                {o.body && <Expandable text={o.body} />}
                 {o.channel === 'connect_note' && o.body && (
                   <div className="card-meta num">
                     {o.body.length} / 200 characters
@@ -139,6 +146,16 @@ export default async function Approvals() {
                     Mark sent
                   </ActionButton>
                   <ActionButton action={skipOutreach.bind(null, o.id)}>Skip</ActionButton>
+                </div>
+                <div className="row" style={{ marginTop: 10 }}>
+                  <InlineEdit
+                    initial={o.body ?? ''}
+                    limit={o.channel === 'connect_note' ? 200 : undefined}
+                    onSave={async (text: string) => {
+                      'use server'
+                      return editOutreach(o.id, text)
+                    }}
+                  />
                 </div>
               </article>
             ))

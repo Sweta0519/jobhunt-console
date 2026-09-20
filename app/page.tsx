@@ -2,13 +2,18 @@ import Link from 'next/link'
 import { requireOwner } from './lib/supabase'
 import { getToday, tokenDaysLeft } from './lib/queries'
 import { NavBar, Section, Empty, StatusBadge, ExternalLink, formatDay, relative } from './components/ui'
+import { Logo } from './components/Logo'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Today' }
 
 export default async function Today() {
   const { supabase } = await requireOwner()
-  const d = await getToday(supabase)
+  const [d, { data: cos }] = await Promise.all([
+    getToday(supabase),
+    supabase.from('companies').select('slug,logo_path'),
+  ])
+  const logos = new Map((cos || []).map((c) => [c.slug, c.logo_path as string | null]))
 
   const waiting = d.waitingOutreach.length + d.waitingPosts.length
   const tokenDays = tokenDaysLeft(d.tokenStatus)
@@ -71,7 +76,8 @@ export default async function Today() {
             d.answer.map((q) => (
               <article key={q.id} className="card">
                 <div className="spread">
-                  <h3 className="card-title">
+                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Logo name={q.company} slug={q.company_slug} path={logos.get(q.company_slug ?? '')} size={24} />
                     <ExternalLink href={q.url}>{q.title}</ExternalLink>
                   </h3>
                   <span className="score num">{q.rank ?? '—'}</span>
@@ -192,7 +198,8 @@ export default async function Today() {
             {d.newJobs.map((j) => (
               <article key={j.id} className="card">
                 <div className="spread">
-                  <h3 className="card-title">
+                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Logo name={j.company} slug={j.company_slug} path={logos.get(j.company_slug ?? '')} size={24} />
                     {j.url ? <ExternalLink href={j.url}>{j.title}</ExternalLink> : j.title}
                   </h3>
                   <span className="score num">{j.score ?? '—'}</span>

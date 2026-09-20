@@ -20,6 +20,18 @@ test('eligibility keeps Germany and EU remote, rejects elsewhere', () => {
   assert.equal(isEligible({ location: 'Poland', remote: true }), false, 'a single non-German EU country is not EU-wide remote');
 });
 
+test('the word "remote" never qualifies a posting on its own', () => {
+  // The bug this guards: any location containing "Remote" used to pass, which
+  // put Poland, the Netherlands and Spain at the top of the list.
+  assert.equal(isEligible({ location: 'Poland (Remote)', remote: true }), false);
+  assert.equal(isEligible({ location: 'Netherlands (Remote)', remote: true }), false);
+  assert.equal(isEligible({ location: 'Spain (Remote)', remote: true }), false);
+  assert.equal(isEligible({ location: 'Remote - United States', remote: true }), false);
+  // A bare "Remote" names no country yet, so it stays in and she can check it.
+  assert.equal(isEligible({ location: 'Remote', remote: true }), true);
+  assert.equal(isEligible({ location: '', remote: true }), true);
+});
+
 test('a posting that requires German is flagged, never eligible', () => {
   assert.equal(isEligible({ location: 'Germany', remote: true, germanRequired: true }), false);
 });

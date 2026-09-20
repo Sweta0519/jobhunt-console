@@ -17,7 +17,7 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { upsert, parseArgs } from '../workers/lib/db.mjs';
+import { upsert, select, parseArgs } from '../workers/lib/db.mjs';
 
 const HOME = homedir();
 const SRC = {
@@ -52,11 +52,23 @@ export function slugify(name) {
 export function isEligible(job) {
   if (job.germanRequired) return false;
   if (job.remote === false) return false;
+
   const loc = `${job.location || ''} ${job.workplaceType || ''}`.toLowerCase();
-  if (!loc) return job.remote === true;
-  const ok = /german|deutschland|\beu\b|europe|european union|emea|remote/.test(loc);
-  const excluded = /united states|\busa\b|canada|india|australia|singapore|brazil/.test(loc);
-  return ok && !excluded;
+
+  // Germany itself, or a posting open across the EU / EMEA.
+  const germany = /german|deutschland|berlin|hamburg|münchen|munich|frankfurt|köln|cologne|stuttgart|düsseldorf/.test(loc);
+  const euWide = /\beu\b|\beea\b|european union|\beurope\b|emea/.test(loc);
+  if (germany || euWide) return true;
+
+  // "Remote" on its own passes, because no country has been named yet.
+  // "Poland (Remote)" does not: a single non-German country is exactly what she
+  // ruled out, and the word "remote" must never be the thing that qualifies a
+  // posting. That bug put Poland, the Netherlands and Spain at the top of her list.
+  const withoutNoise = loc
+    .replace(/remote|hybrid|on-?site|full-?time|part-?time|contract|permanent/g, ' ')
+    .replace(/[^a-z]+/g, ' ')
+    .trim();
+  return withoutNoise === '' && job.remote === true;
 }
 
 /** Empty slugs would violate the foreign key, so they become null. */
@@ -277,6 +289,30 @@ async function main() {
     writeFileSync('out/import-preview.json', JSON.stringify(data, null, 2));
     console.log('dry run -> out/import-preview.json (nothing uploaded)');
     return;
+  }
+
+  // Decisions she made in the console outrank whatever the local JSON says.
+  // Re-importing after a fresh LinkedIn export must not un-apply a job or
+  // resurrect a message she already sent.
+  const PROTECTED = {
+    jobs: ['status', 'applied_at', 'notes'],
+    outreach: ['status', 'approved_at', 'sent_at', 'replied_at', 'body'],
+    posts: ['status', 'approved_at', 'published_urn', 'published_url', 'published_at'],
+    questions: ['status', 'answered_at', 'answer_url', 'note', 'starred'],
+  };
+
+  for (const [table, fields] of Object.entries(PROTECTED)) {
+    const existing = await select(table, `?select=id,${fields.join(',')}`);
+    if (!existing?.length) continue;
+    const byId = new Map(existing.map((r) => [r.id, r]));
+    let kept = 0;
+    for (const row of data[table]) {
+      const prev = byId.get(row.id);
+      if (!prev) continue;
+      for (const f of fields) row[f] = prev[f];
+      kept++;
+    }
+    if (kept) console.log(`${table}: kept console state on ${kept} existing row(s)`);
   }
 
   // Order matters: companies and people are referenced by foreign keys.

@@ -93,6 +93,24 @@ export async function patch(table, query, body) {
   return request('PATCH', table, { query, body, headers: { Prefer: 'return=minimal' } });
 }
 
+/**
+ * Update existing rows one key at a time.
+ *
+ * Not an upsert: Postgres checks NOT NULL while building the candidate tuple,
+ * before ON CONFLICT can turn it into an update, so a partial upsert fails on
+ * any NOT NULL column the payload omits.
+ */
+export async function updateEach(table, keyColumn, rows) {
+  let n = 0;
+  for (const row of rows) {
+    const { [keyColumn]: key, ...fields } = row;
+    if (key === undefined || !Object.keys(fields).length) continue;
+    await patch(table, `?${keyColumn}=eq.${encodeURIComponent(key)}`, fields);
+    n++;
+  }
+  return n;
+}
+
 /** Read a secret. Only ever called by workers; the browser cannot reach this table. */
 export async function getSecret(key) {
   const rows = await select('secrets', `?key=eq.${encodeURIComponent(key)}&select=value`);

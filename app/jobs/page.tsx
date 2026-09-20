@@ -3,6 +3,8 @@ import type { Job } from '../lib/queries'
 import { jobPrompt } from '../lib/prompts'
 import { NavBar, Section, Empty, StatusBadge, ExternalLink, formatDay } from '../components/ui'
 import { ActionButton, CopyButton } from '../components/ActionButton'
+import { Logo } from '../components/Logo'
+import { FilterBar } from '../components/Interactive'
 import { setJobStatus } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -17,12 +19,12 @@ export default async function Jobs({
   const view = sp.view || 'open'
   const { supabase } = await requireOwner()
 
-  const { data } = await supabase
-    .from('jobs')
-    .select('*')
-    .order('score', { ascending: false })
-    .limit(400)
+  const [{ data }, { data: cos }] = await Promise.all([
+    supabase.from('jobs').select('*').order('score', { ascending: false }).limit(400),
+    supabase.from('companies').select('slug,name,logo_path'),
+  ])
   const all = (data as Job[]) || []
+  const logos = new Map((cos || []).map((c) => [c.slug, c.logo_path as string | null]))
 
   const applied = all.filter((j) => ['applied', 'shortlisted', 'interview'].includes(j.status))
   const german = all.filter((j) => j.german_required && !j.closed)
@@ -52,10 +54,16 @@ export default async function Jobs({
           {shown.length === 0 ? (
             <Empty>Nothing here.</Empty>
           ) : (
-            shown.map((j) => (
-              <article key={j.id} className="card">
+            <FilterBar placeholder="Filter by company, title or location…  (press /)" total={shown.length}>
+            {shown.map((j) => (
+              <article
+                key={j.id}
+                className="card"
+                data-search={`${j.company} ${j.title} ${j.location ?? ''} ${j.status}`}
+              >
                 <div className="spread">
-                  <h3 className="card-title">
+                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Logo name={j.company} slug={j.company_slug} path={logos.get(j.company_slug ?? '')} />
                     {j.url ? <ExternalLink href={j.url}>{j.title}</ExternalLink> : j.title}
                   </h3>
                   <span className="score num">{j.score ?? '—'}</span>
@@ -83,7 +91,8 @@ export default async function Jobs({
                   <CopyButton text={jobPrompt(j)} label="Copy prompt" />
                 </div>
               </article>
-            ))
+            ))}
+            </FilterBar>
           )}
         </Section>
       </main>
