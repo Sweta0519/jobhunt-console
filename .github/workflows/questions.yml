@@ -40,6 +40,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node workers/questions.mjs --days "${{ inputs.days || 7 }}"
 
+      - name: Check for replies and anything needing attention
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node workers/notify.mjs
+
       - name: Keep the schedule alive
         # GitHub disables scheduled workflows in a public repo after 60 days of
         # no repository activity. This commit is the activity.

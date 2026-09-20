@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ThemeToggle } from './ThemeToggle'
+import { Bell } from './Bell'
 
 /**
  * The only component allowed to print a status word.
@@ -121,6 +122,9 @@ export function NavBar({ current, waiting }: { current: string; waiting: number 
           <Link href="/" className="brand">
             Jobhunt
           </Link>
+          <span className="bell-mobile">
+            <Bell />
+          </span>
           <nav className="navlinks">
             {links.map((l) => (
               <Link
@@ -133,6 +137,7 @@ export function NavBar({ current, waiting }: { current: string; waiting: number 
                 {l.href === '/approvals' && waiting > 0 ? ` (${waiting})` : ''}
               </Link>
             ))}
+            <Bell />
             <ThemeToggle />
           </nav>
         </div>

@@ -130,10 +130,15 @@ a:hover { text-decoration-color: currentColor; }
 .navlink:hover { background: var(--surface-2); color: var(--text); }
 .navlink[aria-current='page'] { background: var(--surface-2); color: var(--text); font-weight: 600; }
 
+/* The bell sits in the nav on desktop; on a phone the nav is hidden, so a
+   second copy rides next to the brand. Only one is ever visible. */
+.bell-mobile { display: none; margin-left: auto; }
+
 /* Phone: four thumb-height destinations. */
 .tabbar { display: none; }
 @media (max-width: 680px) {
   .navlinks { display: none; }
+  .bell-mobile { display: inline-flex; }
   .shell { padding: 0 16px 104px; }
   .tabbar {
     display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;

@@ -213,3 +213,14 @@ export async function addContribution(form: FormData) {
     .insert({ kind, title, url, company, happened_at: now() })
   return error ? fail(error.message) : ok()
 }
+
+/** Clear notifications she has looked at. Workers write them; she only reads. */
+export async function markNotificationsRead(ids: string[]) {
+  const { supabase } = await requireOwner()
+  if (!ids.length) return ok()
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read_at: now() })
+    .in('id', ids)
+  return error ? fail(error.message) : ok()
+}

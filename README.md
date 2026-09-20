@@ -110,6 +110,24 @@ GitHub's 60-day inactivity cut-off for public repositories.
 
 ---
 
+## Notifications
+
+A bell in the top bar. Two severities, kept apart: **needs you** (a follow-up is
+due, a token is expiring, someone replied) and **happened** (a pull request
+merged). Only the first drives the count, so the badge always means there is
+something to do rather than something occurred.
+
+`workers/notify.mjs` watches what it can from the cloud: pull requests and
+issues she opened, GitHub discussion comments she left, Discourse topics she
+answered, plus her own state. Each row carries a `dedupe_key`, so the same reply
+is announced once rather than every run.
+
+LinkedIn is the exception. Its API does not expose message threads, and reading
+comments on her own posts needs partner access. `scripts/linkedin-replies.mjs`
+covers that from her PC against the browser she is already signed in on, reading
+only the conversation list she can see anyway and never marking anything replied
+on its own.
+
 ## Images
 
 Two buckets, deliberately different.
