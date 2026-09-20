@@ -15,7 +15,23 @@ type Run = {
   error: string | null
 }
 
-export default async function Settings() {
+const MESSAGES: Record<string, string> = {
+  connected: 'LinkedIn reconnected.',
+  cancelled: 'You cancelled the LinkedIn sign-in. Nothing changed.',
+  denied: 'LinkedIn refused the request. Nothing changed.',
+  badstate: 'That link did not come from here, so it was ignored. Start again from this page.',
+  unconfigured: 'The LinkedIn app credentials are not set on the server yet.',
+  exchange_failed: 'LinkedIn would not exchange the code. Try again.',
+  userinfo_failed: 'Could not read your LinkedIn profile with the new token.',
+  store_failed: 'The token could not be stored.',
+}
+
+export default async function Settings({
+  searchParams,
+}: {
+  searchParams: Promise<{ linkedin?: string }>
+}) {
+  const sp = await searchParams
   const { supabase, user } = await requireOwner()
 
   const [runs, token, counts] = await Promise.all([
@@ -43,26 +59,27 @@ export default async function Settings() {
         <p className="sub">Signed in as {user.email}</p>
 
         <Section title="LinkedIn access">
-          {days === null ? (
-            <div className="card">
-              <p style={{ marginTop: 0 }}>
-                No token is recorded here yet. Posts are still published by the scheduled task on
-                your PC at 10:05 on weekdays, using the token stored locally.
-              </p>
-              <p className="sub" style={{ marginBottom: 0 }}>
-                Reconnecting from the browser arrives with the publish worker, which is what will
-                let posts go out with the laptop closed.
-              </p>
-            </div>
-          ) : (
-            <div className={days <= 7 ? 'notice' : 'card'}>
-              <p style={{ margin: 0 }}>
-                {days <= 0
-                  ? 'LinkedIn access has expired. Posts are not publishing.'
-                  : `LinkedIn access expires in ${days} day${days === 1 ? '' : 's'}.`}
-              </p>
+          {sp.linkedin && (
+            <div className={sp.linkedin === 'connected' ? 'card' : 'notice'}>
+              <p style={{ margin: 0 }}>{MESSAGES[sp.linkedin] || 'Something went wrong.'}</p>
             </div>
           )}
+          <div className={days !== null && days <= 7 ? 'notice' : 'card'}>
+            <p style={{ marginTop: 0 }}>
+              {days === null
+                ? 'No token is recorded, so posts cannot publish.'
+                : days <= 0
+                  ? 'LinkedIn access has expired. Posts are not publishing.'
+                  : `LinkedIn access expires in ${days} day${days === 1 ? '' : 's'}.`}
+            </p>
+            <p className="sub">
+              The token lasts sixty days and cannot renew itself, so this needs doing roughly every
+              two months. It takes one tap and works from a phone.
+            </p>
+            <a className="btn primary" href="/auth/linkedin/start">
+              {days === null ? 'Connect LinkedIn' : 'Reconnect LinkedIn'}
+            </a>
+          </div>
         </Section>
 
         <Section title="Scheduled jobs" hint="These run in GitHub Actions, with your laptop closed.">

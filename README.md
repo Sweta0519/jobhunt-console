@@ -110,6 +110,23 @@ GitHub's 60-day inactivity cut-off for public repositories.
 
 ---
 
+## Reconnecting LinkedIn
+
+The access token lasts sixty days and cannot renew itself, so publishing stops
+roughly every two months until it is replaced. Settings has a button that runs
+the authorisation flow and stores the new token, and it works from a phone.
+
+The token is written by `jobhunt.store_linkedin_token`, a security-definer
+function. The alternative was giving the web app the service role key so it
+could write to `secrets`, and that key bypasses row level security across the
+whole project. This way the app can store a token and can never read one back,
+which is verified: calling the function from a browser session succeeds, reading
+the table from the same session is refused.
+
+The client secret stays in a server-only environment variable and never reaches
+the browser. The deployed callback URL must also be listed under Authorized
+redirect URLs on the LinkedIn app, or the flow is rejected before it starts.
+
 ## Notifications
 
 A bell in the top bar. Two severities, kept apart: **needs you** (a follow-up is
