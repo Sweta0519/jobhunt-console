@@ -1,0 +1,167 @@
+import Link from 'next/link'
+import { requireOwner } from '../lib/supabase'
+import { tokenDaysLeft } from '../lib/queries'
+import { NavBar, Section, Empty, relative, formatDay } from '../components/ui'
+
+export const dynamic = 'force-dynamic'
+export const metadata = { title: 'Settings' }
+
+type Run = {
+  worker: string
+  started_at: string
+  finished_at: string | null
+  ok: boolean | null
+  summary: Record<string, unknown> | null
+  error: string | null
+}
+
+export default async function Settings() {
+  const { supabase, user } = await requireOwner()
+
+  const [runs, token, counts] = await Promise.all([
+    supabase.from('runs').select('*').order('started_at', { ascending: false }).limit(12),
+    supabase.from('settings').select('value').eq('key', 'linkedin_token_status').maybeSingle(),
+    Promise.all(
+      (['jobs', 'questions', 'outreach', 'posts', 'people', 'contributions'] as const).map(
+        async (t) => {
+          const { count } = await supabase.from(t).select('*', { count: 'exact', head: true })
+          return [t, count ?? 0] as const
+        }
+      )
+    ),
+  ])
+
+  const days = tokenDaysLeft((token.data?.value as { expires_at?: string }) ?? null)
+  const rows = (runs.data as Run[]) || []
+  const lastOk = rows.find((r) => r.ok === true)
+
+  return (
+    <>
+      <NavBar current="/settings" waiting={0} />
+      <main className="shell">
+        <h1>Settings</h1>
+        <p className="sub">Signed in as {user.email}</p>
+
+        <Section title="LinkedIn access">
+          {days === null ? (
+            <div className="card">
+              <p style={{ marginTop: 0 }}>
+                No token is recorded here yet. Posts are still published by the scheduled task on
+                your PC at 10:05 on weekdays, using the token stored locally.
+              </p>
+              <p className="sub" style={{ marginBottom: 0 }}>
+                Reconnecting from the browser arrives with the publish worker, which is what will
+                let posts go out with the laptop closed.
+              </p>
+            </div>
+          ) : (
+            <div className={days <= 7 ? 'notice' : 'card'}>
+              <p style={{ margin: 0 }}>
+                {days <= 0
+                  ? 'LinkedIn access has expired. Posts are not publishing.'
+                  : `LinkedIn access expires in ${days} day${days === 1 ? '' : 's'}.`}
+              </p>
+            </div>
+          )}
+        </Section>
+
+        <Section title="Scheduled jobs" hint="These run in GitHub Actions, with your laptop closed.">
+          {rows.length === 0 ? (
+            <Empty>Nothing has run yet.</Empty>
+          ) : (
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              {rows.map((r, i) => (
+                <div
+                  key={r.started_at + r.worker}
+                  style={{
+                    padding: '12px 18px',
+                    borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ fontWeight: 500, minWidth: 80 }}>{r.worker}</span>
+                  <span
+                    className="badge"
+                    style={{
+                      background: r.ok === false ? 'var(--fail-soft)' : 'var(--done-soft)',
+                      color: r.ok === false ? 'var(--fail)' : 'var(--done)',
+                    }}
+                  >
+                    <span aria-hidden="true">{r.ok === false ? '▲' : '✓'}</span>
+                    {r.ok === false ? 'failed' : 'ok'}
+                  </span>
+                  <span className="card-meta">{relative(r.started_at)}</span>
+                  {r.summary && (
+                    <span className="card-meta mono">
+                      {Object.entries(r.summary)
+                        .filter(([, v]) => typeof v === 'number')
+                        .map(([k, v]) => `${k} ${v}`)
+                        .join(' · ')}
+                    </span>
+                  )}
+                  {r.error && <span className="card-meta mono">{r.error.slice(0, 90)}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          {lastOk && (
+            <p className="sub">
+              Last successful run {relative(lastOk.started_at)}, on {formatDay(lastOk.started_at)}.
+            </p>
+          )}
+        </Section>
+
+        <Section title="What is stored">
+          <div className="card">
+            <ul style={{ margin: 0, paddingLeft: 18 }} className="num">
+              {counts.map(([table, n]) => (
+                <li key={table}>
+                  {n} {table}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <p className="sub">
+            Company logos are public brand assets. Profile photos sit in a private bucket, only for
+            people with a live conversation, and are deleted when it closes.
+          </p>
+        </Section>
+
+        <Section title="What runs where">
+          <div className="card">
+            <p style={{ marginTop: 0 }}>
+              <strong>In the cloud, daily:</strong> the community question list, and the checks
+              behind the notification bell. Neither needs your laptop, and neither uses a paid
+              model.
+            </p>
+            <p>
+              <strong>On your PC:</strong> publishing today&apos;s post, profile photos, and
+              checking LinkedIn for replies. LinkedIn&apos;s API exposes neither message threads
+              nor comments on your own posts, so those cannot move to a server.
+            </p>
+            <p style={{ marginBottom: 0 }}>
+              <strong>In Claude Code:</strong> drafting answers, posts and messages. That is
+              covered by your existing subscription, which is why this console costs nothing to
+              run.
+            </p>
+          </div>
+        </Section>
+
+        <Section title="Sign out">
+          <form action="/auth/signout" method="post">
+            <button className="btn" type="submit">
+              Sign out
+            </button>
+          </form>
+        </Section>
+
+        <p className="sub" style={{ marginTop: 28 }}>
+          <Link href="/">← Today</Link>
+        </p>
+      </main>
+    </>
+  )
+}
