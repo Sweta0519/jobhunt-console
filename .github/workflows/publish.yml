@@ -1,0 +1,59 @@
+name: publish
+
+# Publishes today's approved post through LinkedIn's official API, with her
+# laptop closed. Replaces the Windows scheduled task that used to do this.
+on:
+  schedule:
+    # 08:05 UTC = 10:05 Berlin in summer, 09:05 in winter. Cron has no notion of
+    # daylight saving, and the exact minute does not matter for a daily post.
+    - cron: '5 8 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      id:
+        description: 'Post id to publish (blank = today)'
+        default: ''
+      dry_run:
+        description: 'Render only, publish nothing'
+        type: boolean
+        default: false
+
+concurrency:
+  # Never two publishers at once: the guard against a duplicate post.
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: npm ci --omit=dev --ignore-scripts
+
+      - name: Publish
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Chrome ships on the runner; the poster is rendered with it.
+          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          node workers/publish.mjs \
+            ${{ inputs.id && format('--id {0}', inputs.id) || '' }} \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Save the render for inspection when something looks wrong
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render
+          path: /tmp/jobhunt-publish/out/**
+          if-no-files-found: ignore
+          retention-days: 7
