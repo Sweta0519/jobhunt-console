@@ -59,13 +59,26 @@ async function request(method, path, { body, headers = {}, query = '' } = {}) {
   return text ? JSON.parse(text) : null;
 }
 
+/**
+ * Give every row the same key set. PostgREST rejects a batch whose objects
+ * differ ("All object keys must match"), which happens as soon as one source
+ * supplies an optional field and another does not.
+ */
+function squareOff(rows) {
+  const keys = new Set();
+  for (const r of rows) for (const k of Object.keys(r)) keys.add(k);
+  const all = [...keys];
+  return rows.map((r) => Object.fromEntries(all.map((k) => [k, r[k] ?? null])));
+}
+
 /** Upsert rows in batches. Returns the number of rows sent. */
 export async function upsert(table, rows, { onConflict = 'id', batch = 500 } = {}) {
   if (!rows?.length) return 0;
-  for (let i = 0; i < rows.length; i += batch) {
+  const squared = squareOff(rows);
+  for (let i = 0; i < squared.length; i += batch) {
     await request('POST', table, {
       query: `?on_conflict=${onConflict}`,
-      body: rows.slice(i, i + batch),
+      body: squared.slice(i, i + batch),
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     });
   }

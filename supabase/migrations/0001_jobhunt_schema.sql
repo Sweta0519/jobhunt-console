@@ -76,6 +76,7 @@ create table if not exists jobhunt.jobs (
   status          text not null default 'found'
                   check (status in ('found','saved','applied','shortlisted','interview','rejected','closed')),
   applied_at      date,
+  notes           text,
   closed          boolean not null default false,
   first_seen_at   timestamptz not null default now(),
   last_seen_at    timestamptz not null default now(),
@@ -295,6 +296,12 @@ grant insert on jobhunt.contributions, jobhunt.people to authenticated;
 
 -- anon gets nothing: a leaked anon key with no session sees an empty schema.
 alter default privileges in schema jobhunt revoke all on tables from anon, authenticated;
+
+-- The workers run as service_role. It bypasses RLS but still needs table
+-- privileges, and a fresh schema has none of Supabase's `public` defaults.
+grant all on all tables in schema jobhunt to service_role;
+grant all on all sequences in schema jobhunt to service_role;
+alter default privileges in schema jobhunt grant all on tables to service_role;
 
 -- `secrets` is never granted to anyone. Left out of every grant above on purpose;
 -- this makes that explicit and survives someone running a blanket GRANT later.

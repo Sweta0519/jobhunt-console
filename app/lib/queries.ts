@@ -50,7 +50,7 @@ export async function getToday(supabase: DB) {
   const today = berlinToday()
   const soon = new Date(Date.now() + 86_400_000).toISOString()
 
-  const [questions, todayPost, waitingOutreach, waitingPosts, followups, newJobs, token, lastRuns] =
+  const [questions, todayPost, waitingOutreach, waitingPosts, followups, newJobs, token, lastRuns, openCount] =
     await Promise.all([
       supabase
         .from('questions')
@@ -79,12 +79,14 @@ export async function getToday(supabase: DB) {
         .limit(3),
       supabase.from('settings').select('value').eq('key', 'linkedin_token_status').maybeSingle(),
       supabase.from('runs').select('worker,finished_at,ok,error').order('started_at', { ascending: false }).limit(8),
+      // The real total, not the length of the capped list above.
+      supabase.from('questions').select('id', { count: 'exact', head: true }).eq('status', 'new'),
     ])
 
   return {
     today,
     answer: pickQuestions((questions.data as Question[]) || []),
-    openQuestionCount: questions.data?.length ?? 0,
+    openQuestionCount: openCount.count ?? 0,
     todayPost: (todayPost.data as Post) || null,
     waitingOutreach: (waitingOutreach.data as Outreach[]) || [],
     waitingPosts: (waitingPosts.data as Post[]) || [],

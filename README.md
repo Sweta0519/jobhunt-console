@@ -55,13 +55,16 @@ supabase/migrations/ schema, grants and row level security
 
 ### 1. Database
 
+Use a Supabase project of its own. Sharing one with another app means that
+app's users all get a valid session against this database, and then the only
+thing standing between them and the data is `is_me()`.
+
 Apply `supabase/migrations/0001_jobhunt_schema.sql`, then two things that are
 easy to miss:
 
 - **Settings → API → Exposed schemas**: add `jobhunt`. Without it every query
   returns 404.
-- **Authentication → Providers**: disable new sign-ups. `auth.users` is shared
-  with other apps in this project.
+- **Authentication → Providers**: disable new sign-ups.
 
 Then record the owner:
 
@@ -88,7 +91,12 @@ node scripts/import.mjs        # upsert
 ### 4. Deploy
 
 Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and
-`NEXT_PUBLIC_SITE_URL` on Vercel.
+`NEXT_PUBLIC_SITE_URL` on Vercel, and add the deployed origin to Supabase's
+redirect allow list or the sign-in link bounces.
+
+Turn **off** Vercel's own Deployment Protection. It is on by default for new
+projects and would put the whole console behind a Vercel team login, on top of
+the sign-in this app already has.
 
 **Do not put `SUPABASE_SERVICE_ROLE_KEY` on Vercel.** It bypasses row level
 security across the whole project and the app has no operation that needs it.

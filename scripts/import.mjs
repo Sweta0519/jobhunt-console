@@ -59,6 +59,9 @@ export function isEligible(job) {
   return ok && !excluded;
 }
 
+/** Empty slugs would violate the foreign key, so they become null. */
+const nz = (v) => (v && String(v).trim() ? String(v).trim() : null);
+
 export function transform({ jobnet, queue, posts, questions }) {
   const companies = new Map();
   const touch = (slug, name, patch = {}) => {
@@ -72,13 +75,13 @@ export function transform({ jobnet, queue, posts, questions }) {
   }
 
   const jobs = (jobnet?.jobs || []).map((j) => {
-    const slug = j.companyNorm || slugify(j.company);
+    const slug = nz(j.companyNorm) || nz(slugify(j.company));
     touch(slug, j.company);
     return {
       id: j.id,
       source: j.source === 'manual' ? 'manual' : 'linkedin-export',
       company_slug: slug,
-      company: j.company || slug,
+      company: j.company || slug || '(unknown company)',
       title: j.title || '(untitled)',
       url: j.url || null,
       location: j.location || null,
@@ -105,7 +108,7 @@ export function transform({ jobnet, queue, posts, questions }) {
     people.push(p);
   };
   for (const p of jobnet?.people || []) {
-    const slug = p.companyNorm || null;
+    const slug = nz(p.companyNorm);
     if (slug) touch(slug, p.companyNorm);
     addPerson({
       id: p.id,
@@ -121,14 +124,14 @@ export function transform({ jobnet, queue, posts, questions }) {
     });
   }
   for (const c of jobnet?.connections || []) {
-    const slug = c.companyNorm || slugify(c.company);
+    const slug = nz(c.companyNorm) || nz(slugify(c.company));
     if (slug) touch(slug, c.company);
     addPerson({
       id: c.id,
       name: c.name || '(unknown)',
       url: c.url || null,
       headline: null,
-      company_slug: slug || null,
+      company_slug: slug,
       company: c.company || null,
       position: c.position || null,
       relationship: 'connection',
@@ -143,7 +146,7 @@ export function transform({ jobnet, queue, posts, questions }) {
     person_id: seenPerson.has(q.personId) ? q.personId : null,
     person_name: q.personName || '(unknown)',
     person_url: q.personUrl || null,
-    company_slug: q.companyNorm || null,
+    company_slug: nz(q.companyNorm),
     company: q.companyName || null,
     job_id: q.jobId || null,
     channel: ['connect_note', 'connect_blank', 'message'].includes(q.channel) ? q.channel : 'message',
@@ -186,7 +189,7 @@ export function transform({ jobnet, queue, posts, questions }) {
   }));
 
   const questionRows = (questions?.items || []).map((q) => {
-    const slug = q.company && q.company !== 'general' ? slugify(q.company) : null;
+    const slug = q.company && q.company !== 'general' ? nz(slugify(q.company)) : null;
     if (slug) touch(slug, q.company, { weight: 10 });
     return {
       id: q.id,
@@ -277,19 +280,26 @@ async function main() {
   }
 
   // Order matters: companies and people are referenced by foreign keys.
-  for (const table of ['companies', 'people', 'jobs', 'outreach', 'posts', 'questions']) {
-    const n = await upsert(table, data[table]);
+  // Each table's conflict target is its primary key, which is not always `id`.
+  const CONFLICT = { companies: 'slug', contributions: 'url' };
+  for (const table of ['companies', 'people', 'jobs', 'outreach', 'posts', 'questions', 'contributions']) {
+    const n = await upsert(table, data[table], { onConflict: CONFLICT[table] || 'id' });
     console.log(`${table}: ${n} row(s)`);
   }
-  // contributions has a unique index on url, so re-running is safe.
-  const n = await upsert('contributions', data.contributions, { onConflict: 'url' });
-  console.log(`contributions: ${n} row(s)`);
 }
 
 // Windows: import.meta.url is file:///C:/... so build the comparison properly.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((e) => {
-    console.error(e.message);
-    process.exit(1);
-  });
+  main()
+    .then(() => exitSoon(0))
+    .catch((e) => {
+      console.error(e.message);
+      exitSoon(1);
+    });
+}
+
+// Node 25 trips a libuv assertion when the process exits immediately after a
+// fetch; a tick of delay lets the handles close.
+function exitSoon(code) {
+  setTimeout(() => process.exit(code), 150);
 }

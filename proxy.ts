@@ -1,7 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PUBLIC = ['/login', '/auth/callback', '/auth/signout']
+// robots.txt must stay reachable, or the disallow it carries is never read.
+const PUBLIC = ['/login', '/auth/callback', '/auth/finish', '/auth/signout', '/robots.txt']
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
