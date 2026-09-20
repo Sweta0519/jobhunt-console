@@ -32,6 +32,8 @@ jobs:
         with:
           node-version: '22'
 
+      - run: npm ci --omit=dev --ignore-scripts
+
       - name: Refresh questions
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -39,6 +41,13 @@ jobs:
           # The workflow token is enough for public search and discussions.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node workers/questions.mjs --days "${{ inputs.days || 7 }}"
+
+      - name: Render previews for new drafts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node workers/render.mjs
 
       - name: Poll job boards
         env:

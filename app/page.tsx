@@ -3,15 +3,18 @@ import { requireOwner } from './lib/supabase'
 import { getToday, tokenDaysLeft } from './lib/queries'
 import { NavBar, Section, Empty, StatusBadge, ExternalLink, formatDay, relative } from './components/ui'
 import { Logo } from './components/Logo'
+import { Preview } from './components/Preview'
+import { postPreviews } from './lib/avatars'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Today' }
 
 export default async function Today() {
   const { supabase } = await requireOwner()
-  const [d, { data: cos }] = await Promise.all([
+  const [d, { data: cos }, previews] = await Promise.all([
     getToday(supabase),
     supabase.from('companies').select('slug,logo_path'),
+    postPreviews(supabase),
   ])
   const logos = new Map((cos || []).map((c) => [c.slug, c.logo_path as string | null]))
 
@@ -122,6 +125,7 @@ export default async function Today() {
               <div className="card-meta">
                 {formatDay(d.todayPost.post_date)} · {d.todayPost.format} · {d.todayPost.pillar}
               </div>
+              <Preview src={previews.get(d.todayPost.id)} max={280} />
               {d.todayPost.status === 'published' && d.todayPost.published_url && (
                 <div className="row" style={{ marginTop: 12 }}>
                   <ExternalLink href={d.todayPost.published_url}>

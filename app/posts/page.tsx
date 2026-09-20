@@ -3,6 +3,8 @@ import { captionText, type Post } from '../lib/queries'
 import { postPrompt } from '../lib/prompts'
 import { NavBar, Section, Empty, StatusBadge, ExternalLink, formatDay } from '../components/ui'
 import { ActionButton, CopyButton } from '../components/ActionButton'
+import { Preview } from '../components/Preview'
+import { postPreviews } from '../lib/avatars'
 import { approvePost, skipPost } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -10,11 +12,10 @@ export const metadata = { title: 'Posts' }
 
 export default async function Posts() {
   const { supabase } = await requireOwner()
-  const { data } = await supabase
-    .from('posts')
-    .select('*')
-    .order('post_date', { ascending: false })
-    .limit(100)
+  const [{ data }, previews] = await Promise.all([
+    supabase.from('posts').select('*').order('post_date', { ascending: false }).limit(100),
+    postPreviews(supabase),
+  ])
   const rows = (data as Post[]) || []
 
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
@@ -36,7 +37,7 @@ export default async function Posts() {
           {upcoming.length === 0 ? (
             <Empty>Nothing scheduled. Draft next week&apos;s in Claude Code.</Empty>
           ) : (
-            upcoming.map((p) => <Card key={p.id} p={p} today={today} />)
+            upcoming.map((p) => <Card key={p.id} p={p} today={today} preview={previews.get(p.id)} />)
           )}
         </Section>
 
@@ -53,6 +54,7 @@ export default async function Posts() {
                 <div className="card-meta">
                   {formatDay(p.published_at || p.post_date)} · {p.format} · {p.pillar}
                 </div>
+                <Preview src={previews.get(p.id)} alt={p.alt_text ?? undefined} max={200} />
                 {p.published_url && (
                   <div className="row" style={{ marginTop: 12 }}>
                     <ExternalLink href={p.published_url}>
@@ -83,7 +85,7 @@ export default async function Posts() {
   )
 }
 
-function Card({ p, today }: { p: Post; today: string }) {
+function Card({ p, today, preview }: { p: Post; today: string; preview?: string }) {
   const isToday = p.post_date === today
   const when = formatDay(p.post_date)
   return (
@@ -95,6 +97,7 @@ function Card({ p, today }: { p: Post; today: string }) {
       <div className="card-meta">
         {when} · {p.format} · {p.pillar}
       </div>
+      <Preview src={preview} alt={p.alt_text ?? undefined} />
       {p.caption && <div className="card-body">{captionText(p.caption)}</div>}
       <div className="row" style={{ marginTop: 12 }}>
         {p.status === 'draft' && (

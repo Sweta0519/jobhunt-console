@@ -5,6 +5,8 @@ import { NavBar, Section, Empty, StatusBadge, formatDay, relative } from '../com
 import { ActionButton, CopyButton } from '../components/ActionButton'
 import { Logo } from '../components/Logo'
 import { Expandable, InlineEdit } from '../components/Interactive'
+import { Preview } from '../components/Preview'
+import { postPreviews } from '../lib/avatars'
 import { approveOutreach, skipOutreach, markOutreachSent, approvePost, skipPost, editOutreach } from '../actions'
 import { linkedinChatUrl } from '../lib/prompts'
 
@@ -28,6 +30,7 @@ export default async function Approvals() {
     supabase.from('companies').select('slug,logo_path'),
   ])
   const logos = new Map((cosRes.data || []).map((c) => [c.slug, c.logo_path as string | null]))
+  const previews = await postPreviews(supabase)
 
   const outreach = (outreachRes.data as Outreach[]) || []
   const posts = (postsRes.data as Post[]) || []
@@ -64,6 +67,7 @@ export default async function Approvals() {
                   <div className="card-meta">
                     {when} · {p.format} · {p.pillar}
                   </div>
+                  <Preview src={previews.get(p.id)} alt={p.alt_text ?? undefined} />
                   {p.caption && <Expandable text={captionText(p.caption)} />}
                   <div className="row" style={{ marginTop: 12 }}>
                     {p.status === 'draft' && (

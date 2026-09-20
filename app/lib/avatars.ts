@@ -40,3 +40,25 @@ export async function peopleAvatars(supabase: DB): Promise<Map<string, string>> 
   }
   return byPerson
 }
+
+/** Signed preview URLs for posts, keyed by post id. */
+export async function postPreviews(supabase: DB): Promise<Map<string, string>> {
+  const { data } = await supabase
+    .from('posts')
+    .select('id,preview_path')
+    .not('preview_path', 'is', null)
+  const rows = (data as { id: string; preview_path: string }[]) || []
+  if (!rows.length) return new Map()
+
+  const { data: signed } = await supabase.storage
+    .from('posts')
+    .createSignedUrls(rows.map((r) => r.preview_path), 3600)
+
+  const byPath = new Map((signed || []).map((s) => [s.path ?? '', s.signedUrl]))
+  const out = new Map<string, string>()
+  for (const r of rows) {
+    const url = byPath.get(r.preview_path)
+    if (url) out.set(r.id, url)
+  }
+  return out
+}

@@ -22,7 +22,8 @@ export type Outreach = {
 }
 export type Post = {
   id: string; post_date: string | null; format: string | null; pillar: string | null
-  title: string | null; caption: Caption | null; status: string; published_url: string | null
+  title: string | null; caption: Caption | null; alt_text: string | null
+  status: string; published_url: string | null
   published_at: string | null; last_error: string | null; preview_path: string | null
 }
 export type Caption = { hook?: string; body?: string; cta?: string; hashtags?: string[] }

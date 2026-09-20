@@ -5,6 +5,8 @@ import { captionText, type Post } from '../../lib/queries'
 import { postPrompt } from '../../lib/prompts'
 import { NavBar, StatusBadge, ExternalLink, formatDay, relative } from '../../components/ui'
 import { ActionButton, CopyButton } from '../../components/ActionButton'
+import { Preview } from '../../components/Preview'
+import { postPreviews } from '../../lib/avatars'
 import { approvePost, skipPost, movePost } from '../../actions'
 
 export const dynamic = 'force-dynamic'
@@ -13,7 +15,10 @@ export default async function PostDetail({ params }: { params: Promise<{ id: str
   const { id } = await params
   const { supabase } = await requireOwner()
 
-  const { data } = await supabase.from('posts').select('*').eq('id', id).maybeSingle()
+  const [{ data }, previews] = await Promise.all([
+    supabase.from('posts').select('*').eq('id', id).maybeSingle(),
+    postPreviews(supabase),
+  ])
   if (!data) notFound()
   const p = data as Post & { card: unknown; slides: unknown; alt_text: string | null; sources: unknown }
 
@@ -55,6 +60,16 @@ export default async function PostDetail({ params }: { params: Promise<{ id: str
           <div className="notice">
             <strong>Last attempt failed.</strong> <span className="mono">{p.last_error}</span>
           </div>
+        )}
+
+        {previews.get(id) && (
+          <>
+            <h2>Preview</h2>
+            <Preview src={previews.get(id)} alt={p.alt_text ?? undefined} max={520} />
+            <p className="sub" style={{ marginTop: 8 }}>
+              Tap to open the full image. Publishing re-renders from the current copy.
+            </p>
+          </>
         )}
 
         <h2>Caption</h2>
