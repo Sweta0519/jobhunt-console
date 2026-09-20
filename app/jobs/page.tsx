@@ -20,7 +20,7 @@ export default async function Jobs({
   const { supabase } = await requireOwner()
 
   const [{ data }, { data: cos }] = await Promise.all([
-    supabase.from('jobs').select('*').order('score', { ascending: false }).limit(400),
+    supabase.from('jobs').select('*').order('score', { ascending: false, nullsFirst: false }).limit(400),
     supabase.from('companies').select('slug,name,logo_path'),
   ])
   const all = (data as Job[]) || []

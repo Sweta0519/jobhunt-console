@@ -173,6 +173,35 @@ async function checkInternal() {
     }
   }
 
+  // The publish worker can only post what exists. Better to hear on Sunday that
+  // the week is empty than to watch it find nothing four mornings running.
+  const horizon = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  const upcoming = await select(
+    'posts',
+    `?select=post_date,status&post_date=gte.${today}&post_date=lte.${horizon}&status=in.(draft,approved,rendered)`
+  );
+  const covered = new Set((upcoming || []).map((p) => p.post_date));
+  const gaps = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(Date.now() + i * 86_400_000);
+    const day = d.getDay();
+    if (day === 0 || day === 6) continue; // weekdays only, as the cadence is
+    const iso = d.toISOString().slice(0, 10);
+    if (!covered.has(iso)) gaps.push(iso);
+  }
+  if (gaps.length) {
+    add({
+      kind: 'pipeline_gap',
+      severity: 'action',
+      title: `${gaps.length} weekday${gaps.length === 1 ? '' : 's'} with no post`,
+      body: `Nothing scheduled for ${gaps.map((g) => g.slice(5)).join(', ')}. Drafting happens in Claude Code.`,
+      url: '/posts',
+      entity_ref: 'pipeline',
+      // Once a day, and again only if the gaps change.
+      dedupe_key: `pipeline:${today}:${gaps.join(',')}`,
+    });
+  }
+
   for (const r of runs || []) {
     if (r.ok !== false) continue;
     add({

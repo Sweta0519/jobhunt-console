@@ -1,4 +1,4 @@
-name: questions
+name: daily
 
 # Refreshes the community-question list every morning so the console is current
 # whether or not her laptop is on. Free: Actions minutes are unlimited on a
@@ -39,6 +39,12 @@ jobs:
           # The workflow token is enough for public search and discussions.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node workers/questions.mjs --days "${{ inputs.days || 7 }}"
+
+      - name: Poll job boards
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node workers/jobs.mjs
 
       - name: Check for replies and anything needing attention
         env:

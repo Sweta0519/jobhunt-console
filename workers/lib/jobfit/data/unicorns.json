@@ -1,0 +1,19 @@
+{
+  "_comment": "Startups, scale-ups and unicorns worth targeting. Names are matched case-insensitively against the job's company name after normalization. Edit freely.",
+  "unicorns": [
+    "Celonis", "Personio", "N26", "Trade Republic", "Contentful", "GetYourGuide", "Flix", "FlixBus", "Sennder", "Forto", "Enpal", "1KOMMA5", "Solaris", "Scalable Capital", "Raisin",
+    "Wefox", "Gorillas", "Flink", "Tier Mobility", "Grover", "Taxfix", "Pitch", "Mambu", "Omio", "HelloFresh", "Delivery Hero", "Zalando", "Auto1", "About You", "SumUp", "Choco", "Razor Group",
+    "Blacklane", "Kry", "Doctolib", "Ada Health", "Isar Aerospace", "Helsing", "Black Forest Labs", "Aleph Alpha", "DeepL", "Parloa", "Cognigy", "Lilium", "Volocopter", "Everphone",
+    "Sastrify", "Circula", "Moss", "Pliant", "Finn", "Cleo", "Klarna", "Spotify", "Revolut", "Wise", "Monzo", "Checkout.com", "Bolt", "Pleo", "Lunar", "Tink", "Northvolt", "Einride",
+    "Miro", "Notion", "Figma", "Canva", "Airtable", "Vercel", "Supabase", "Grafana Labs", "GitLab", "HashiCorp", "Databricks", "Snowflake", "Datadog", "Elastic", "MongoDB", "Confluent",
+    "Cockroach Labs", "PlanetScale", "Neon", "Retool", "Postman", "Zapier", "Webflow", "Contentsquare", "Algolia", "Mistral AI", "Hugging Face", "Anthropic", "OpenAI", "Scale AI",
+    "Stripe", "Brex", "Ramp", "Deel", "Remote", "Oyster", "Rippling", "Gusto", "Lattice", "Culture Amp", "Loom", "Calendly", "Intercom", "Zendesk", "Front", "Aircall", "Dixa",
+    "Runpod", "Modal", "Replicate", "Fly.io", "Render", "Railway", "Cloudflare", "Auth0", "Okta", "Twilio", "Sentry", "LaunchDarkly", "PagerDuty", "Sauce Labs", "BrowserStack",
+    "vCluster", "Loft Labs", "Kubermatic", "Giant Swarm", "Camunda", "Staffbase", "Flip", "Personio", "Leapsome", "Spendesk", "Qonto", "Alan", "Swile", "Back Market", "Vinted",
+    "Bitpanda", "Coinbase", "Kraken", "Bitwala", "Nuri", "Upvest", "Tomorrow", "Penta", "Kontist", "Billie", "Mollie", "Adyen", "GoCardless", "TrueLayer", "Yapily", "Payhawk"
+  ],
+  "startupSignals": [
+    "series a", "series b", "series c", "series d", "seed-funded", "venture-backed", "vc-backed", "startup", "start-up", "scale-up", "scaleup", "fast-growing", "hyper-growth",
+    "hypergrowth", "unicorn", "y combinator", "yc-backed", "backed by", "raised", "funding round", "remote-first", "product-led"
+  ]
+}

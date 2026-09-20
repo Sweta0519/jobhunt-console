@@ -76,7 +76,7 @@ export async function getToday(supabase: DB) {
         .eq('closed', false)
         .eq('status', 'found')
         .gte('score', 75)
-        .order('score', { ascending: false })
+        .order('score', { ascending: false, nullsFirst: false })
         .limit(3),
       supabase.from('settings').select('value').eq('key', 'linkedin_token_status').maybeSingle(),
       supabase.from('runs').select('worker,finished_at,ok,error').order('started_at', { ascending: false }).limit(8),
