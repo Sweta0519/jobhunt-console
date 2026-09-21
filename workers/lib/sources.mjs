@@ -47,6 +47,14 @@ export const SOURCES = {
     // server SDKs are generated from a private OpenAPI spec, require a CLA, and
     // took between zero and one new issue in the last thirty days.
     { repo: 'stripe/stripe-cli', company: 'stripe', label: '', bugTracker: true },
+    // Work Supabase maintainers have explicitly opened to outsiders. These are
+    // the issues they stage on their public Open Source Maintainers board,
+    // which cannot be read directly without a read:project scope. Deliberately
+    // narrow: 10, 3 and 2 open respectively, against 270 carrying
+    // `external-issue`, which is almost every issue and therefore no signal.
+    { repo: 'supabase/supabase', company: 'supabase', label: 'needs-analysis', invited: true },
+    { repo: 'supabase/supabase', company: 'supabase', label: 'help wanted', invited: true },
+    { repo: 'supabase/supabase', company: 'supabase', label: 'good first issue', invited: true },
   ],
   stackoverflow: [
     { tag: 'supabase', company: 'supabase' },

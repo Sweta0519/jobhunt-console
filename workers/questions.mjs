@@ -108,7 +108,19 @@ async function main() {
     return out;
   });
 
-  const rows = items.map((i) => toRow(i, cfg));
+  // One issue can arrive from several entries now that labels are watched
+  // alongside the whole tracker, and a batch holding the same id twice makes
+  // Postgres refuse the upsert outright ("cannot affect row a second time").
+  // Keep the first, which carries the richer entry, and merge in any labels the
+  // later copies saw so an invitation is never lost to ordering.
+  const byId = new Map();
+  for (const item of items) {
+    const seen = byId.get(item.id);
+    if (!seen) { byId.set(item.id, item); continue; }
+    seen.tags = [...new Set([...(seen.tags || []), ...(item.tags || [])])];
+    seen.bugTracker = seen.bugTracker && item.bugTracker;
+  }
+  const rows = [...byId.values()].map((i) => toRow(i, cfg));
   const okSources = Object.values(status).filter((s) => s.ok).length;
 
   if (args['dry-run']) {
