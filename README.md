@@ -100,7 +100,15 @@ the sign-in this app already has.
 
 **Do not put `SUPABASE_SERVICE_ROLE_KEY` on Vercel.** It bypasses row level
 security across the whole project and the app has no operation that needs it.
-It belongs only in GitHub Actions secrets and in `.env.local`.
+It belongs only in GitHub Actions secrets and in `.env.local`. Vercel's import
+screen offers to create it for you, because it reads the key names out of
+`.env.example`; remove that row before creating the project.
+
+The Vercel project is connected to this repository, so a push to `main`
+deploys itself. That connection is worth checking rather than assuming: while
+it was missing, three commits sat on `main` for a day without ever reaching
+the live site, and a deployment that silently does not happen looks exactly
+like one that did.
 
 ### 5. Schedule
 
