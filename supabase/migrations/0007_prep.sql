@@ -61,10 +61,14 @@ grant all on jobhunt.prep to service_role;
 
 insert into jobhunt.prep (id, company_slug, seq, level, title, why, how) values
 
--- ClickHouse: Technical Customer Support Engineer, AI Infrastructure & Observability (EMEA)
+-- ClickHouse: Technical Customer Support Engineer, EMEA (the general posting,
+-- fd8daa96), with the AI Infrastructure & Observability one as a second
+-- application. The general posting wants breadth in ClickHouse OSS or Cloud,
+-- SQL, OLAP and distributed systems, 24x7 coverage, and writing for docs,
+-- knowledge base, blogs and webinars; OSS community contribution is a bonus.
 ('ch-01', 'clickhouse', 1, 1,
  'Run ClickHouse in Docker and load a real dataset into a MergeTree table you designed',
- 'The posting asks for hands-on experience with databases and OLAP. Three applications, none of this yet.',
+ 'The posting asks for depth in ClickHouse open-source or Cloud, or in SQL databases and OLAP. Applications in, none of this yet.',
  'docker run -d --name ch -p 8123:8123 -p 9000:9000 clickhouse/clickhouse-server. Load the UK property prices or NYC taxi sample from the docs. Create the MergeTree table yourself and write one sentence on why you chose that ORDER BY. Evidence: the DDL and one query, in a gist.'),
 
 ('ch-02', 'clickhouse', 2, 1,
@@ -89,13 +93,18 @@ insert into jobhunt.prep (id, company_slug, seq, level, title, why, how) values
 
 ('ch-06', 'clickhouse', 6, 1,
  'Ingest from a stream: Kafka engine table plus a materialized view',
- 'The posting names Kafka and data pipelines explicitly.',
- 'Use the ClickHouse and Kafka docker quickstart. Kafka engine table, materialized view into a MergeTree target. Break it once (bad message, wrong format) and find where the error surfaces.'),
+ 'Bonus points in the posting: "data pipelines such as Kafka, Kinesis, Spark, RabbitMQ". Kafka is the one ClickHouse has a table engine for, so it is the one customers ask about.',
+ 'Use the ClickHouse and Kafka docker quickstart. Kafka engine table, materialized view into a MergeTree target. Break it once (bad message, wrong format) and find where the error surfaces in system.kafka_consumers and the server log.'),
 
 ('ch-07', 'clickhouse', 7, 1,
- 'Self-host Langfuse with its docker compose, and trace one LLM call into it',
- 'This role is AI Infrastructure & Observability and names Langfuse. Langfuse runs on ClickHouse and Postgres, so this is the two requirements in one exercise.',
- 'git clone langfuse/langfuse, docker compose up. Send one traced call from a script using the Langfuse SDK. Then open the ClickHouse container and find that trace in the tables. Evidence: a screenshot of the trace and the SELECT that found it.'),
+ 'Only if the AI Infrastructure application progresses: self-host Langfuse, which runs on ClickHouse',
+ 'Relevant to the second application only. That posting names Langfuse, and Langfuse stores traces in ClickHouse, so it doubles as more ClickHouse practice. Skip it if that process goes quiet.',
+ 'git clone langfuse/langfuse, docker compose up. Send one traced call using the Langfuse SDK. Open the ClickHouse container and find that trace in the tables. Evidence: the SELECT that found it.'),
+
+('ch-11', 'clickhouse', 11, 2,
+ 'Ticket: a replica is read-only, or "Keeper session expired"',
+ 'The general posting lists distributed systems alongside SQL and OLAP, and a two-node replicated setup is where most distributed tickets come from.',
+ 'Docker compose with two ClickHouse nodes and one ClickHouse Keeper. Create a ReplicatedMergeTree table, insert on one node, read on the other. Stop Keeper and watch inserts fail with the read-only error; check system.replicas and system.zookeeper. Write the reply for a customer whose writes suddenly fail after a Keeper restart.'),
 
 ('ch-08', 'clickhouse', 8, 1,
  'ClickHouse Cloud trial: connect, and note what differs from open source',
@@ -104,7 +113,7 @@ insert into jobhunt.prep (id, company_slug, seq, level, title, why, how) values
 
 ('ch-09', 'clickhouse', 9, 3,
  'Answer one ClickHouse issue or discussion with a diagnosis you actually ran',
- 'Community support is in the posting, and you have zero public artifacts at ClickHouse against three applications.',
+ 'The posting names community support as part of the job and lists "experience with OSS ... as a community member or contributor" as a bonus. You have zero public artifacts at ClickHouse against three applications.',
  'Take a question from the Today queue that matches something you reproduced in ch-03 to ch-05. Answer it with the query that proves the cause. Record the link.'),
 
 ('ch-10', 'clickhouse', 10, 3,
