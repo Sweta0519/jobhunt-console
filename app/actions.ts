@@ -17,7 +17,7 @@ import { requireOwner } from './lib/supabase'
 const now = () => new Date().toISOString()
 
 function ok() {
-  for (const p of ['/', '/approvals', '/questions', '/outreach', '/posts', '/jobs', '/record']) {
+  for (const p of ['/', '/approvals', '/questions', '/outreach', '/posts', '/jobs', '/record', '/companies']) {
     revalidatePath(p)
   }
   return { ok: true as const }
@@ -211,6 +211,30 @@ export async function addContribution(form: FormData) {
   const { error } = await supabase
     .from('contributions')
     .insert({ kind, title, url, company, happened_at: now() })
+  return error ? fail(error.message) : ok()
+}
+
+/**
+ * Prep drills. "Done" is the only status that asks for anything: a level-3
+ * drill produces a public artifact, so it wants the link, the same way an
+ * answered question does. Lower levels may be done with a note alone.
+ */
+export async function setPrepStatus(id: string, status: string, evidence?: string, note?: string) {
+  const { supabase } = await requireOwner()
+  if (!['todo', 'doing', 'done', 'skipped'].includes(status)) return fail('Unknown status.')
+  const url = (evidence || '').trim()
+  if (url && !/^https?:\/\//.test(url)) return fail('Evidence should be a link.')
+
+  if (status === 'done') {
+    const { data: d } = await supabase.from('prep').select('level').eq('id', id).maybeSingle()
+    if (d?.level === 3 && !url) return fail('A public drill needs the link to what you published.')
+  }
+
+  const patch: Record<string, unknown> = { status, updated_at: now() }
+  if (url) patch.evidence_url = url
+  if (note !== undefined) patch.note = note.trim() || null
+  patch.done_at = status === 'done' ? now() : null
+  const { error } = await supabase.from('prep').update(patch).eq('id', id)
   return error ? fail(error.message) : ok()
 }
 

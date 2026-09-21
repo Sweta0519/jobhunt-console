@@ -113,6 +113,48 @@ export function jobPrompt(j: Job): string {
     .join('\n')
 }
 
+export type Drill = {
+  id: string; company_slug: string; seq: number; level: number
+  title: string; why: string; how: string; status: string
+  evidence_url: string | null; note: string | null; done_at: string | null
+}
+
+const LEVEL_LABEL: Record<number, string> = {
+  1: 'know it: run the thing and see the moving parts',
+  2: 'ticket: reproduce the failure, diagnose it with the tool, write the customer reply',
+  3: 'public: produce an artifact with a link, or a story with evidence',
+}
+
+export function prepPrompt(d: Drill, company: string): string {
+  return [
+    PREAMBLE,
+    '',
+    `Walk me through this hands-on drill for my ${company} application. I am preparing`,
+    'for a support engineer interview loop, so the goal is being able to diagnose one',
+    'realistic ticket live and write the customer-facing reply, not internals.',
+    '',
+    `drill:    ${d.id}  (level ${d.level}, ${LEVEL_LABEL[d.level] ?? ''})`,
+    `title:    ${d.title}`,
+    `why:      ${d.why}`,
+    '',
+    'steps:',
+    d.how,
+    '',
+    d.note ? `my notes so far:\n${d.note}\n` : '',
+    'Verify commands and settings against the current docs before giving them to me,',
+    'and tell me which docs page each came from. Everything runs locally or on a free',
+    'tier; stop and say so if a step would cost money.',
+    '',
+    d.level === 2
+      ? 'End with the customer reply in the answer-guide shape: cause in one line, the check that proves it, the fix, one docs link.'
+      : d.level === 3
+        ? 'End with what I should publish and where, so I can record the link as evidence.'
+        : 'End with the two or three things I should be able to explain afterwards, and what to keep as evidence.',
+  ]
+    .filter((l) => l !== '')
+    .join('\n')
+}
+
 /**
  * LinkedIn deep link to a conversation with a person, so sending by hand is
  * one tap from the console. Falls back to their profile.

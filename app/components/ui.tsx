@@ -21,6 +21,11 @@ export function StatusBadge({ status }: { status: string }) {
     applied: { tone: 'done', glyph: '✓', label: 'Applied' },
     interview: { tone: 'done', glyph: '✓', label: 'Interviewing' },
 
+    // prep drills: done means there is evidence or a written-up story behind it
+    done: { tone: 'done', glyph: '✓', label: 'Done' },
+    doing: { tone: 'wait', glyph: '◷', label: 'In progress' },
+    todo: { tone: 'inert', glyph: '·', label: 'To do' },
+
     // waiting: a decision exists but nothing has gone out
     draft: { tone: 'wait', glyph: '✎', label: 'Draft' },
     approved: { tone: 'wait', glyph: '◷', label: 'Approved, not sent' },
@@ -107,6 +112,7 @@ export function NavBar({ current, waiting }: { current: string; waiting: number 
     { href: '/jobs', label: 'Jobs' },
     { href: '/outreach', label: 'Outreach' },
     { href: '/posts', label: 'Posts' },
+    { href: '/companies', label: 'Companies' },
     { href: '/record', label: 'Record' },
   ]
   const tabs = [
