@@ -14,6 +14,7 @@ export const COMPANY_WEIGHT = {
   vercel: 10,
   n8n: 5,
   camunda: 5,
+  stripe: 5,
   general: 0,
 };
 
@@ -25,6 +26,8 @@ export const SOURCES = {
     { owner: 'vercel', name: 'vercel', company: 'vercel', categoryId: 'MDE4OkRpc2N1c3Npb25DYXRlZ29yeTY2MTYw', category: 'Help' },
     // vercel/next.js Help is deliberately absent: a 50-item discussions query
     // times out server-side there, and its unanswered threads run weeks old.
+    { owner: 'stripe', name: 'stripe-node', company: 'stripe', categoryId: 'DIC_kwDOACW3fM4C2Yat', category: 'Q&A' },
+    { owner: 'stripe', name: 'stripe-cli', company: 'stripe', categoryId: 'MDE4OkRpc2N1c3Npb25DYXRlZ29yeTMyMDgwMTM2', category: 'Q&A' },
   ],
   ghIssues: [
     { repo: 'docker/compose', company: 'docker', label: 'kind/question' },
@@ -33,6 +36,17 @@ export const SOURCES = {
     { repo: 'supabase/supabase', company: 'supabase', label: '', bugTracker: true },
     { repo: 'ClickHouse/ClickHouse', company: 'clickhouse', label: '', bugTracker: true },
     { repo: 'n8n-io/n8n', company: 'n8n', label: '', bugTracker: true },
+    // Camunda's docs repo, the same shape as docker/docs above: 582 open and
+    // pushed daily, and a docs fix is the contribution that already landed at
+    // Supabase. camunda/camunda itself is deliberately absent, being an
+    // engineering monorepo of 2,830 mostly internal issues whose "good first
+    // issue" label means a first issue for a new Camunda engineer, not an
+    // outside one.
+    { repo: 'camunda/camunda-docs', company: 'camunda', label: '' },
+    // Of Stripe's public repos only the CLI is both hand-written and busy. The
+    // server SDKs are generated from a private OpenAPI spec, require a CLA, and
+    // took between zero and one new issue in the last thirty days.
+    { repo: 'stripe/stripe-cli', company: 'stripe', label: '', bugTracker: true },
   ],
   stackoverflow: [
     { tag: 'supabase', company: 'supabase' },
@@ -41,6 +55,9 @@ export const SOURCES = {
     { tag: 'n8n', company: 'n8n' },
     { tag: 'camunda', company: 'camunda' },
     { tag: 'vercel', company: 'vercel' },
+    // `stripe-payments` is the live tag; a bare `stripe` tag returns nothing.
+    // It is broad enough to need the keyword filter, the way `docker` does.
+    { tag: 'stripe-payments', company: 'stripe', requireKeyword: true },
     { tag: 'postgresql', company: 'general', requireKeyword: true },
     { tag: 'oauth-2.0', company: 'general', requireKeyword: true },
     { tag: 'rest', company: 'general', requireKeyword: true },

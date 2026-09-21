@@ -113,6 +113,21 @@ async function main() {
 
   if (args['dry-run']) {
     rows.sort((a, b) => b.rank - a.rank);
+    // Broken down per company, because a newly added source can return nothing
+    // while the totals still look healthy, and then a company sits in the
+    // config looking watched without ever contributing a question.
+    const byCompany = {};
+    for (const r of rows) {
+      const k = r.company || 'general';
+      byCompany[k] = (byCompany[k] || 0) + 1;
+    }
+    console.log(
+      '\nby company: ' +
+        Object.entries(byCompany)
+          .sort((a, b) => b[1] - a[1])
+          .map(([k, v]) => `${k}=${v}`)
+          .join('  ')
+    );
     console.log(`\ntop 10 of ${rows.length}:`);
     for (const r of rows.slice(0, 10)) {
       console.log(`  ${String(r.rank).padStart(3)}  ${r.site}  ${r.title.slice(0, 70)}`);
