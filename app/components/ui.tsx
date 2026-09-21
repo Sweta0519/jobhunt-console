@@ -143,7 +143,9 @@ export function NavBar({ current, waiting }: { current: string; waiting: number 
                 {l.href === '/approvals' && waiting > 0 ? ` (${waiting})` : ''}
               </Link>
             ))}
-            <Bell />
+            <span className="bell-desktop">
+              <Bell />
+            </span>
             <ThemeToggle />
           </nav>
         </div>

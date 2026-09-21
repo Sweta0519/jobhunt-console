@@ -134,10 +134,23 @@ a:hover { text-decoration-color: currentColor; }
    second copy rides next to the brand. Only one is ever visible. */
 .bell-mobile { display: none; margin-left: auto; }
 
-/* Phone: four thumb-height destinations. */
+/* Phone: four thumb-height destinations in the bottom bar for the daily loop,
+   and the full list of sections as a scrollable strip under the brand, so
+   nothing is reachable only from a desktop. The strip scrolls sideways rather
+   than wrapping: eight links wrapped to three lines would eat the screen. */
 .tabbar { display: none; }
 @media (max-width: 680px) {
-  .navlinks { display: none; }
+  .topbar-inner { flex-wrap: wrap; row-gap: 8px; padding-bottom: 8px; }
+  .navlinks {
+    display: flex; flex-wrap: nowrap; width: 100%; margin-left: 0; gap: 4px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; padding-bottom: 2px;
+    /* Bleed into the shell padding so the first link lines up with content. */
+    margin-inline: -16px; padding-inline: 16px; width: calc(100% + 32px);
+  }
+  .navlinks::-webkit-scrollbar { display: none; }
+  .navlink { white-space: nowrap; flex: 0 0 auto; }
+  .bell-desktop { display: none; }
   .bell-mobile { display: inline-flex; }
   .shell { padding: 0 16px 104px; }
   .tabbar {
