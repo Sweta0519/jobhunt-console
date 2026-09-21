@@ -61,11 +61,12 @@ grant all on jobhunt.prep to service_role;
 
 insert into jobhunt.prep (id, company_slug, seq, level, title, why, how) values
 
--- ClickHouse: Technical Customer Support Engineer, EMEA (the general posting,
--- fd8daa96), with the AI Infrastructure & Observability one as a second
--- application. The general posting wants breadth in ClickHouse OSS or Cloud,
--- SQL, OLAP and distributed systems, 24x7 coverage, and writing for docs,
--- knowledge base, blogs and webinars; OSS community contribution is a bonus.
+-- ClickHouse: Technical Customer Support Engineer, EMEA (posting fd8daa96).
+-- It wants breadth in ClickHouse OSS or Cloud, SQL, OLAP and distributed
+-- systems, 24x7 coverage, and writing for docs, knowledge base, blogs and
+-- webinars; OSS community contribution is a bonus. The AI Infrastructure &
+-- Observability posting is open and eligible but was not applied to, so
+-- nothing here is calibrated to it.
 ('ch-01', 'clickhouse', 1, 1,
  'Run ClickHouse in Docker and load a real dataset into a MergeTree table you designed',
  'The posting asks for depth in ClickHouse open-source or Cloud, or in SQL databases and OLAP. Applications in, none of this yet.',
@@ -95,11 +96,6 @@ insert into jobhunt.prep (id, company_slug, seq, level, title, why, how) values
  'Ingest from a stream: Kafka engine table plus a materialized view',
  'Bonus points in the posting: "data pipelines such as Kafka, Kinesis, Spark, RabbitMQ". Kafka is the one ClickHouse has a table engine for, so it is the one customers ask about.',
  'Use the ClickHouse and Kafka docker quickstart. Kafka engine table, materialized view into a MergeTree target. Break it once (bad message, wrong format) and find where the error surfaces in system.kafka_consumers and the server log.'),
-
-('ch-07', 'clickhouse', 7, 1,
- 'Only if the AI Infrastructure application progresses: self-host Langfuse, which runs on ClickHouse',
- 'Relevant to the second application only. That posting names Langfuse, and Langfuse stores traces in ClickHouse, so it doubles as more ClickHouse practice. Skip it if that process goes quiet.',
- 'git clone langfuse/langfuse, docker compose up. Send one traced call using the Langfuse SDK. Open the ClickHouse container and find that trace in the tables. Evidence: the SELECT that found it.'),
 
 ('ch-11', 'clickhouse', 11, 2,
  'Ticket: a replica is read-only, or "Keeper session expired"',
@@ -204,3 +200,9 @@ on conflict (id) do update
       how   = excluded.how,
       level = excluded.level,
       seq   = excluded.seq;
+
+-- Drills withdrawn from the seed. The upsert above cannot remove a row, so a
+-- drill that no longer belongs is deleted here by id; otherwise the database
+-- would keep showing work the plan no longer asks for. ch-07 was a Langfuse
+-- exercise for an AI Infrastructure application that was never made.
+delete from jobhunt.prep where id in ('ch-07') and status in ('todo', 'skipped');
