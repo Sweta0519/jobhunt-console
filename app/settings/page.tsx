@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { requireOwner } from '../lib/supabase'
 import { tokenDaysLeft } from '../lib/queries'
 import { NavBar, Section, Empty, relative, formatDay } from '../components/ui'
@@ -26,10 +27,24 @@ const MESSAGES: Record<string, string> = {
   store_failed: 'The token could not be stored.',
 }
 
+/**
+ * Change the password on the signed-in account. This runs as her own session
+ * rather than through the admin API, so the service role key stays off Vercel.
+ */
+async function changePassword(formData: FormData) {
+  'use server'
+  const password = String(formData.get('password') || '')
+  if (password.length < 12) redirect('/settings?password=short')
+
+  const { supabase } = await requireOwner()
+  const { error } = await supabase.auth.updateUser({ password })
+  redirect(error ? '/settings?password=failed' : '/settings?password=changed')
+}
+
 export default async function Settings({
   searchParams,
 }: {
-  searchParams: Promise<{ linkedin?: string }>
+  searchParams: Promise<{ linkedin?: string; password?: string }>
 }) {
   const sp = await searchParams
   const { supabase, user } = await requireOwner()
@@ -165,6 +180,44 @@ export default async function Settings({
               run.
             </p>
           </div>
+        </Section>
+
+        <Section title="Password" hint="Signing in with a password avoids the built-in mailer, which allows only two sends an hour and does not guarantee delivery.">
+          {sp.password === 'changed' && <div className="notice">Password changed.</div>}
+          {sp.password === 'short' && (
+            <div className="notice">Use at least twelve characters.</div>
+          )}
+          {sp.password === 'failed' && (
+            <div className="notice">That could not be saved. Try again.</div>
+          )}
+          <form action={changePassword} className="card">
+            <label htmlFor="new-password" style={{ fontSize: 14, fontWeight: 600 }}>
+              New password
+            </label>
+            <input
+              id="new-password"
+              name="password"
+              type="password"
+              required
+              minLength={12}
+              autoComplete="new-password"
+              style={{
+                width: '100%',
+                marginTop: 6,
+                marginBottom: 12,
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '1px solid var(--border-strong)',
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                fontSize: 16,
+                fontFamily: 'inherit',
+              }}
+            />
+            <button className="btn" type="submit">
+              Change password
+            </button>
+          </form>
         </Section>
 
         <Section title="Sign out">

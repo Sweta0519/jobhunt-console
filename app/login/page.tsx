@@ -3,6 +3,30 @@ import { getSupabase } from '../lib/supabase'
 
 export const metadata = { title: 'Sign in' }
 
+const FIELD: React.CSSProperties = {
+  width: '100%',
+  marginTop: 6,
+  marginBottom: 12,
+  padding: '10px 12px',
+  borderRadius: 8,
+  border: '1px solid var(--border-strong)',
+  background: 'var(--bg)',
+  color: 'var(--text)',
+  fontSize: 16,
+  fontFamily: 'inherit',
+}
+
+async function signIn(formData: FormData) {
+  'use server'
+  const email = String(formData.get('email') || '').trim()
+  const password = String(formData.get('password') || '')
+  if (!email || !password) redirect('/login?error=1')
+
+  const supabase = await getSupabase()
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  redirect(error ? '/login?bad=1' : '/')
+}
+
 async function sendLink(formData: FormData) {
   'use server'
   const email = String(formData.get('email') || '').trim()
@@ -35,14 +59,17 @@ async function sendLink(formData: FormData) {
 export default async function Login({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string; error?: string; denied?: string; wait?: string }>
+  searchParams: Promise<{
+    sent?: string; error?: string; denied?: string; wait?: string; bad?: string
+  }>
 }) {
   const sp = await searchParams
   return (
     <main className="shell" style={{ maxWidth: 400, paddingTop: 80 }}>
       <h1>Jobhunt Console</h1>
-      <p className="sub">Sign in with a link sent to your email.</p>
+      <p className="sub">Sign in with your email and password.</p>
 
+      {sp.bad && <div className="notice">That email and password do not match.</div>}
       {sp.sent && (
         <div className="notice">
           Link sent. It can take a minute or two to arrive, and checking spam is
@@ -67,7 +94,7 @@ export default async function Login({
         </div>
       )}
 
-      <form action={sendLink} className="card" style={{ marginTop: 16 }}>
+      <form action={signIn} className="card" style={{ marginTop: 16 }}>
         <label htmlFor="email" style={{ fontSize: 14, fontWeight: 600 }}>
           Email
         </label>
@@ -76,22 +103,42 @@ export default async function Login({
           name="email"
           type="email"
           required
-          autoComplete="email"
-          style={{
-            width: '100%',
-            marginTop: 6,
-            marginBottom: 12,
-            padding: '10px 12px',
-            borderRadius: 8,
-            border: '1px solid var(--border-strong)',
-            background: 'var(--bg)',
-            color: 'var(--text)',
-            fontSize: 16,
-            fontFamily: 'inherit',
-          }}
+          autoComplete="username"
+          style={FIELD}
+        />
+        <label htmlFor="password" style={{ fontSize: 14, fontWeight: 600 }}>
+          Password
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          required
+          autoComplete="current-password"
+          style={FIELD}
         />
         <button type="submit" className="btn primary" style={{ width: '100%' }}>
-          Send sign-in link
+          Sign in
+        </button>
+      </form>
+
+      {/* Kept as the way back in if the password is lost, not as the usual door:
+          the built-in mailer is best effort and allows two sends an hour. */}
+      <form action={sendLink} style={{ marginTop: 18 }}>
+        <label htmlFor="link-email" className="sub" style={{ fontSize: 13 }}>
+          Forgotten it? Email a one-time sign-in link instead.
+        </label>
+        <input
+          id="link-email"
+          name="email"
+          type="email"
+          required
+          autoComplete="username"
+          placeholder="you@example.com"
+          style={FIELD}
+        />
+        <button type="submit" className="btn" style={{ width: '100%' }}>
+          Email me a link
         </button>
       </form>
     </main>
