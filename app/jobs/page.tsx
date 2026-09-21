@@ -13,10 +13,11 @@ export const metadata = { title: 'Jobs' }
 export default async function Jobs({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>
+  searchParams: Promise<{ view?: string; outcome?: string }>
 }) {
   const sp = await searchParams
   const view = sp.view || 'open'
+  const outcome = sp.outcome || 'all'
   const { supabase } = await requireOwner()
 
   // Applications are fetched by status, not by score: the rows that matter
@@ -45,7 +46,20 @@ export default async function Jobs({
     waiting: applied.filter((j) => j.status === 'applied').length,
   }
 
-  const shown = view === 'applied' ? applied : view === 'german' ? german : open
+  // Within the applied view, one more cut: what happened. "Waiting" is the
+  // uncomfortable one and deserves its own count.
+  const byOutcome = {
+    all: applied,
+    waiting: applied.filter((j) => j.status === 'applied'),
+    interview: applied.filter((j) => j.status === 'interview' || (j.interviewed && j.status !== 'rejected')),
+    rejected: applied.filter((j) => j.status === 'rejected'),
+  }
+  const shown =
+    view === 'applied'
+      ? byOutcome[outcome as keyof typeof byOutcome] ?? applied
+      : view === 'german'
+        ? german
+        : open
 
   return (
     <>
@@ -64,8 +78,14 @@ export default async function Jobs({
         </div>
 
         {view === 'applied' && applied.length > 0 && (
-          <div className="card num" style={{ marginBottom: 14 }}>
-            {funnel.applied} applied → {funnel.interviewed} interviewed → {funnel.rejected} rejected · {funnel.waiting} still waiting
+          <div className="row" style={{ marginBottom: 14 }}>
+            <Tab href="/jobs?view=applied" label={`All ${byOutcome.all.length}`} active={outcome === 'all'} />
+            <Tab href="/jobs?view=applied&outcome=waiting" label={`Waiting ${byOutcome.waiting.length}`} active={outcome === 'waiting'} />
+            <Tab href="/jobs?view=applied&outcome=interview" label={`Interviewing ${byOutcome.interview.length}`} active={outcome === 'interview'} />
+            <Tab href="/jobs?view=applied&outcome=rejected" label={`Rejected ${byOutcome.rejected.length}`} active={outcome === 'rejected'} />
+            <span className="card-meta num" style={{ marginLeft: 'auto' }}>
+              {funnel.interviewed} reached an interview
+            </span>
           </div>
         )}
 
