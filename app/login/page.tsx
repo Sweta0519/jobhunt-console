@@ -19,13 +19,23 @@ async function sendLink(formData: FormData) {
       shouldCreateUser: false,
     },
   })
-  redirect(error ? '/login?error=1' : '/login?sent=1')
+
+  if (!error) redirect('/login?sent=1')
+
+  // Two separate refusals used to render as one unhelpful "that did not work",
+  // and the obvious response to it — press the button again — is the one thing
+  // guaranteed to fail, because a second mail to the same address inside sixty
+  // seconds is refused outright.
+  const rateLimited =
+    error.status === 429 ||
+    /rate limit|after \d+ seconds|only request this/i.test(error.message)
+  redirect(rateLimited ? '/login?wait=1' : '/login?error=1')
 }
 
 export default async function Login({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string; error?: string; denied?: string }>
+  searchParams: Promise<{ sent?: string; error?: string; denied?: string; wait?: string }>
 }) {
   const sp = await searchParams
   return (
@@ -33,8 +43,24 @@ export default async function Login({
       <h1>Jobhunt Console</h1>
       <p className="sub">Sign in with a link sent to your email.</p>
 
-      {sp.sent && <div className="notice">Check your email for the sign-in link.</div>}
-      {sp.error && <div className="notice">That did not work. Try again.</div>}
+      {sp.sent && (
+        <div className="notice">
+          Link sent. It can take a minute or two to arrive, and checking spam is
+          worth it. Sending again inside sixty seconds will be refused, so give it
+          that long before trying.
+        </div>
+      )}
+      {sp.wait && (
+        <div className="notice">
+          A link was already sent to that address. Wait a minute before asking for
+          another one, then check spam. Only two can be sent an hour.
+        </div>
+      )}
+      {sp.error && (
+        <div className="notice">
+          That did not work. Check the address is the one this console belongs to.
+        </div>
+      )}
       {sp.denied && (
         <div className="notice">
           That account is signed in but is not the owner of this console.
