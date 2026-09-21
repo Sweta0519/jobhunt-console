@@ -13,11 +13,15 @@ export const metadata = { title: 'Jobs' }
 export default async function Jobs({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; outcome?: string }>
+  searchParams: Promise<{ view?: string; outcome?: string; year?: string }>
 }) {
   const sp = await searchParams
   const view = sp.view || 'open'
   const outcome = sp.outcome || 'all'
+  // The current year is the search that matters; older applications came in
+  // with the LinkedIn export and are history, not a pipeline.
+  const thisYear = String(new Date().getFullYear())
+  const year = sp.year || thisYear
   const { supabase } = await requireOwner()
 
   // Applications are fetched by status, not by score: the rows that matter
@@ -34,9 +38,12 @@ export default async function Jobs({
 
   // Rejections belong in the applied view: an application that ended is still
   // an application, and hiding it made every row read "Applied" forever.
-  const applied = all
+  const yearOf = (j: Job) => (j.applied_at || j.first_seen_at || '').slice(0, 4)
+  const appliedAll = all
     .filter((j) => APPLIED.includes(j.status))
     .sort((a, b) => (b.outcome_at || b.applied_at || '').localeCompare(a.outcome_at || a.applied_at || ''))
+  const years = [...new Set(appliedAll.map(yearOf).filter(Boolean))].sort().reverse()
+  const applied = year === 'all' ? appliedAll : appliedAll.filter((j) => yearOf(j) === year)
   const german = all.filter((j) => j.german_required && !j.closed)
   const open = all.filter((j) => j.eligible && !j.closed && !APPLIED.includes(j.status))
   const funnel = {
@@ -73,20 +80,37 @@ export default async function Jobs({
 
         <div className="row" style={{ marginBottom: 16 }}>
           <Tab href="/jobs" label={`Open ${open.length}`} active={view === 'open'} />
-          <Tab href="/jobs?view=applied" label={`Applied ${applied.length}`} active={view === 'applied'} />
+          <Tab href="/jobs?view=applied" label={`Applied ${appliedAll.length}`} active={view === 'applied'} />
           <Tab href="/jobs?view=german" label={`Needs German ${german.length}`} active={view === 'german'} />
         </div>
 
-        {view === 'applied' && applied.length > 0 && (
-          <div className="row" style={{ marginBottom: 14 }}>
-            <Tab href="/jobs?view=applied" label={`All ${byOutcome.all.length}`} active={outcome === 'all'} />
-            <Tab href="/jobs?view=applied&outcome=waiting" label={`Waiting ${byOutcome.waiting.length}`} active={outcome === 'waiting'} />
-            <Tab href="/jobs?view=applied&outcome=interview" label={`Interviewing ${byOutcome.interview.length}`} active={outcome === 'interview'} />
-            <Tab href="/jobs?view=applied&outcome=rejected" label={`Rejected ${byOutcome.rejected.length}`} active={outcome === 'rejected'} />
-            <span className="card-meta num" style={{ marginLeft: 'auto' }}>
-              {funnel.interviewed} reached an interview
-            </span>
-          </div>
+        {view === 'applied' && appliedAll.length > 0 && (
+          <>
+            <div className="row" style={{ marginBottom: 8 }}>
+              {years.map((y) => (
+                <Tab
+                  key={y}
+                  href={`/jobs?view=applied&year=${y}${outcome !== 'all' ? `&outcome=${outcome}` : ''}`}
+                  label={`${y} · ${appliedAll.filter((j) => yearOf(j) === y).length}`}
+                  active={year === y}
+                />
+              ))}
+              <Tab
+                href={`/jobs?view=applied&year=all${outcome !== 'all' ? `&outcome=${outcome}` : ''}`}
+                label={`All years · ${appliedAll.length}`}
+                active={year === 'all'}
+              />
+            </div>
+            <div className="row" style={{ marginBottom: 14 }}>
+              <Tab href={`/jobs?view=applied&year=${year}`} label={`All ${byOutcome.all.length}`} active={outcome === 'all'} />
+              <Tab href={`/jobs?view=applied&year=${year}&outcome=waiting`} label={`Waiting ${byOutcome.waiting.length}`} active={outcome === 'waiting'} />
+              <Tab href={`/jobs?view=applied&year=${year}&outcome=interview`} label={`Interviewing ${byOutcome.interview.length}`} active={outcome === 'interview'} />
+              <Tab href={`/jobs?view=applied&year=${year}&outcome=rejected`} label={`Rejected ${byOutcome.rejected.length}`} active={outcome === 'rejected'} />
+              <span className="card-meta num" style={{ marginLeft: 'auto' }}>
+                {funnel.interviewed} reached an interview
+              </span>
+            </div>
+          </>
         )}
 
         <Section title="">
