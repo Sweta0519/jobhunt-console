@@ -196,6 +196,13 @@ export async function setJobStatus(id: string, status: string) {
   if (!allowed.includes(status)) return fail('Unknown status.')
   const patch: Record<string, unknown> = { status, updated_at: now() }
   if (status === 'applied') patch.applied_at = now().slice(0, 10)
+  // An outcome she records by hand is dated today and marked as hers, so a
+  // later inbox scan refreshes only what came from the inbox.
+  if (status === 'rejected' || status === 'interview') {
+    patch.outcome_at = now().slice(0, 10)
+    patch.outcome_source = 'manual'
+    if (status === 'interview') patch.interviewed = true
+  }
   const { error } = await supabase.from('jobs').update(patch).eq('id', id)
   return error ? fail(error.message) : ok()
 }

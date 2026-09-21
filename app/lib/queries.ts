@@ -12,6 +12,29 @@ export type Job = {
   location: string | null; score: number | null; score_notes: Record<string, string> | null
   german_required: boolean; eligible: boolean | null; status: string; closed: boolean
   first_seen_at: string; posted_date: string | null
+  applied_at: string | null; interviewed: boolean | null
+  outcome_at: string | null; outcome_note: string | null; outcome_source: string | null
+}
+
+/**
+ * One line that says what actually happened to an application. "Applied" on
+ * its own is the least informative state a row can be in, so this always adds
+ * the date and, where nothing has come back, how long that has been.
+ */
+export function outcomeLine(j: Job, now = Date.now()): string {
+  const day = (v: string | null) =>
+    v ? new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Europe/Berlin' }) : ''
+  if (j.status === 'rejected') {
+    return `${j.interviewed ? 'Interviewed, then rejected' : 'Rejected'}${j.outcome_at ? ` ${day(j.outcome_at)}` : ''}${j.applied_at ? ` · applied ${day(j.applied_at)}` : ''}`
+  }
+  if (j.status === 'interview' || j.interviewed) {
+    return `Interviewing${j.outcome_at ? `, last step ${day(j.outcome_at)}` : ''}${j.applied_at ? ` · applied ${day(j.applied_at)}` : ''}`
+  }
+  if (j.status === 'applied' && j.applied_at) {
+    const days = Math.floor((now - new Date(j.applied_at).getTime()) / 86_400_000)
+    return `Applied ${day(j.applied_at)} · no reply for ${days} day${days === 1 ? '' : 's'}`
+  }
+  return ''
 }
 export type Outreach = {
   id: string; person_id: string | null; person_name: string; person_url: string | null; company: string | null

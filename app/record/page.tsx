@@ -30,10 +30,18 @@ export default async function Record({
 
   let q = supabase.from('contributions').select('*')
   if (sp.company) q = q.eq('company', sp.company)
-  const [{ data: contribs }, { data: outreach }] = await Promise.all([
+  const [{ data: contribs }, { data: outreach }, { data: apps }] = await Promise.all([
     q.order('happened_at', { ascending: false }).limit(200),
     supabase.from('outreach').select('status'),
+    supabase.from('jobs').select('status,interviewed,applied_at').in('status', ['applied', 'shortlisted', 'interview', 'rejected']).gte('applied_at', '2026-04-25'),
   ])
+  const appRows = apps || []
+  const appFunnel = {
+    applied: appRows.length,
+    interviewed: appRows.filter((a) => a.interviewed || a.status === 'interview').length,
+    rejected: appRows.filter((a) => a.status === 'rejected').length,
+    waiting: appRows.filter((a) => a.status === 'applied').length,
+  }
 
   const rows = (contribs as Contribution[]) || []
 
@@ -107,6 +115,12 @@ export default async function Record({
             <p className="sub" style={{ marginTop: 12, marginBottom: 0 }}>
               {activeWeeks} of the last 12 weeks had at least one public contribution.
             </p>
+          </div>
+        </Section>
+
+        <Section title="Applications since 25 April" hint="Absolute numbers, from the inbox and from what you recorded. A rate at this sample size would be noise.">
+          <div className="card num">
+            {appFunnel.applied} applied → {appFunnel.interviewed} interviewed → {appFunnel.rejected} rejected · {appFunnel.waiting} still waiting
           </div>
         </Section>
 
