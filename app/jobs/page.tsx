@@ -19,16 +19,20 @@ export default async function Jobs({
   const view = sp.view || 'open'
   const { supabase } = await requireOwner()
 
-  const [{ data }, { data: cos }] = await Promise.all([
-    supabase.from('jobs').select('*').order('score', { ascending: false, nullsFirst: false }).limit(400),
+  // Applications are fetched by status, not by score: the rows that matter
+  // most here often have no score at all (imported from the inbox, or added
+  // by hand), and a score-ordered page limit silently dropped every one.
+  const APPLIED = ['applied', 'shortlisted', 'interview', 'rejected']
+  const [{ data: scored }, { data: apps }, { data: cos }] = await Promise.all([
+    supabase.from('jobs').select('*').not('status', 'in', `(${APPLIED.join(',')})`).order('score', { ascending: false, nullsFirst: false }).limit(400),
+    supabase.from('jobs').select('*').in('status', APPLIED),
     supabase.from('companies').select('slug,name,logo_path'),
   ])
-  const all = (data as Job[]) || []
+  const all = [...((scored as Job[]) || []), ...((apps as Job[]) || [])]
   const logos = new Map((cos || []).map((c) => [c.slug, c.logo_path as string | null]))
 
   // Rejections belong in the applied view: an application that ended is still
   // an application, and hiding it made every row read "Applied" forever.
-  const APPLIED = ['applied', 'shortlisted', 'interview', 'rejected']
   const applied = all
     .filter((j) => APPLIED.includes(j.status))
     .sort((a, b) => (b.outcome_at || b.applied_at || '').localeCompare(a.outcome_at || a.applied_at || ''))
