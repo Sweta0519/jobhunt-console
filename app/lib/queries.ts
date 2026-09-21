@@ -27,6 +27,10 @@ export type Post = {
   published_at: string | null; last_error: string | null; preview_path: string | null
 }
 export type Caption = { hook?: string; body?: string; cta?: string; hashtags?: string[] }
+export type Dispatch = {
+  workflow: string; fired_at: string; status_code: number | null
+  error: string | null; checked_at: string | null
+}
 
 const berlinToday = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
@@ -52,7 +56,7 @@ export async function getToday(supabase: DB) {
   const today = berlinToday()
   const soon = new Date(Date.now() + 86_400_000).toISOString()
 
-  const [questions, todayPost, waitingOutreach, waitingPosts, followups, newJobs, token, lastRuns, openCount] =
+  const [questions, todayPost, waitingOutreach, waitingPosts, followups, newJobs, token, lastRuns, openCount, clock] =
     await Promise.all([
       supabase
         .from('questions')
@@ -83,6 +87,13 @@ export async function getToday(supabase: DB) {
       supabase.from('runs').select('worker,finished_at,ok,error').order('started_at', { ascending: false }).limit(8),
       // The real total, not the length of the capped list above.
       supabase.from('questions').select('id', { count: 'exact', head: true }).eq('status', 'new'),
+      // The clock has to be checked here rather than by the notify worker: a
+      // broken clock is precisely what stops that worker from ever running.
+      supabase
+        .from('clock_dispatch')
+        .select('workflow,fired_at,status_code,error,checked_at')
+        .order('fired_at', { ascending: false })
+        .limit(20),
     ])
 
   return {
@@ -96,7 +107,36 @@ export async function getToday(supabase: DB) {
     newJobs: (newJobs.data as Job[]) || [],
     tokenStatus: (token.data?.value as { expires_at?: string } | undefined) ?? null,
     lastRuns: lastRuns.data ?? [],
+    clock: clockHealth((clock.data as Dispatch[]) || []),
   }
+}
+
+/**
+ * Is the scheduled work still being fired? The daily clock runs at 05:40 UTC,
+ * so anything past 26 hours means a firing was missed outright. A dispatch that
+ * came back with a code other than 204 means GitHub refused it, and by far the
+ * likeliest cause is the token having been rotated or revoked.
+ */
+export function clockHealth(rows: Dispatch[]): { ok: boolean; reason: string } | null {
+  const answered = rows.filter((d) => d.checked_at)
+  if (answered.length === 0) return null
+  const [latest] = answered
+  if (latest.status_code !== 204) {
+    return {
+      ok: false,
+      reason: `The ${latest.workflow.replace('.yml', '')} job could not be started (${
+        latest.status_code ?? 'no reply'
+      }). Nothing scheduled will run until that is fixed.`,
+    }
+  }
+  const lastGood = answered.find((d) => d.status_code === 204)
+  const hours = lastGood
+    ? (Date.now() - new Date(lastGood.fired_at).getTime()) / 3_600_000
+    : Infinity
+  if (hours > 26) {
+    return { ok: false, reason: 'No scheduled job has been started in over a day.' }
+  }
+  return { ok: true, reason: '' }
 }
 
 /** The caption exactly as it will appear on LinkedIn, not a JSON dump. */

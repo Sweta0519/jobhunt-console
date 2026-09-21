@@ -39,6 +39,9 @@ export default async function Today() {
       </li>
     )
   }
+  if (d.clock && !d.clock.ok) {
+    attention.push(<li key="clock">{d.clock.reason}</li>)
+  }
   if (d.todayPost?.status === 'failed') {
     attention.push(
       <li key="post">
