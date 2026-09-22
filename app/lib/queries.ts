@@ -107,7 +107,8 @@ export async function getToday(supabase: DB) {
         .order('score', { ascending: false, nullsFirst: false })
         .limit(3),
       supabase.from('settings').select('value').eq('key', 'linkedin_token_status').maybeSingle(),
-      supabase.from('runs').select('worker,finished_at,ok,error').order('started_at', { ascending: false }).limit(8),
+      // Enough to hold the latest run of every worker even on a day with retries.
+      supabase.from('runs').select('worker,finished_at,ok,error').order('started_at', { ascending: false }).limit(24),
       // The real total, not the length of the capped list above.
       supabase.from('questions').select('id', { count: 'exact', head: true }).eq('status', 'new'),
       // The clock has to be checked here rather than by the notify worker: a

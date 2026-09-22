@@ -20,7 +20,12 @@ export default async function Today() {
 
   const waiting = d.waitingOutreach.length + d.waitingPosts.length
   const tokenDays = tokenDaysLeft(d.tokenStatus)
-  const failedRun = d.lastRuns.find((r) => r.ok === false)
+  // A failure is only worth a banner while it is the latest word from that
+  // worker. Once a later run of the same worker has succeeded, the failure is
+  // history, and a banner that outlives its fix teaches her to ignore banners.
+  const latestByWorker = new Map<string, (typeof d.lastRuns)[number]>()
+  for (const r of d.lastRuns) if (!latestByWorker.has(r.worker)) latestByWorker.set(r.worker, r)
+  const failedRun = [...latestByWorker.values()].find((r) => r.ok === false)
 
   const attention: React.ReactNode[] = []
   if (tokenDays !== null && tokenDays <= 7) {
