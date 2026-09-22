@@ -1,0 +1,38 @@
+# Replies and attention, every few hours.
+#
+# The daily run watches threads once a morning, which is too slow once a
+# maintainer is actually talking to her: three replies on a Supabase PR
+# waited most of a day. This runs only the notifier, about forty seconds,
+# and is dispatched by pg_cron every three hours during her day (see
+# migration 0009). The cron line below is GitHub's own best-effort second
+# chance, same as the other workflows.
+
+name: notify
+
+on:
+  schedule:
+    - cron: '0 5,8,11,14,17,20 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: notify
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --omit=dev --ignore-scripts
+      - name: Check for replies and anything needing attention
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node workers/notify.mjs

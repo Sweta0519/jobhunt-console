@@ -50,11 +50,17 @@ async function checkGitHubThread(c, token) {
       dedupe_key: `${state}:${label}`,
     });
   }
-  if (c.last_seen_count != null && comments > c.last_seen_count) {
+  // First sighting used to set the watermark silently, so anything posted
+  // between her recording the thread and the first check was never announced:
+  // three replies to her on supabase/supabase#50628 vanished that way. On a
+  // first check, anything by someone else since she recorded it counts as new.
+  const firstCheck = c.last_seen_count == null;
+  const newSince = firstCheck ? await commentsSince(owner, repo, number, c.created_at, token) : null;
+  if (firstCheck ? newSince.some((login) => login !== ME) : comments > c.last_seen_count) {
     // The count alone cannot tell her reply from someone else's. Her own two
     // comments on vercel/vercel#17605 rang the bell as "new reply", so look at
     // who wrote the new ones and stay quiet if it was only her.
-    const fresh = await newCommentsBy(owner, repo, number, comments - c.last_seen_count, token);
+    const fresh = firstCheck ? newSince : await newCommentsBy(owner, repo, number, comments - c.last_seen_count, token);
     if (fresh.some((login) => login !== ME)) {
       add({
         kind: 'pr_comment',
@@ -72,6 +78,18 @@ async function checkGitHubThread(c, token) {
 
 /** Her GitHub login; anything she writes herself is not news to her. */
 const ME = 'Sweta0519';
+
+/** Logins of comments on an issue or pull request posted after `sinceIso`. */
+async function commentsSince(owner, repo, number, sinceIso, token) {
+  if (!sinceIso) return [];
+  const r = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments?since=${encodeURIComponent(sinceIso)}&per_page=100`,
+    { headers: { Accept: 'application/vnd.github+json', 'User-Agent': UA, ...(token ? { Authorization: `Bearer ${token}` } : {}) } }
+  );
+  if (!r.ok) return ['unknown']; // fail open
+  const list = await r.json();
+  return list.filter((x) => x.created_at > sinceIso).map((x) => x.user?.login || 'unknown');
+}
 
 /** Logins of the newest `n` comments on an issue or pull request. */
 async function newCommentsBy(owner, repo, number, n, token) {
@@ -91,7 +109,7 @@ async function checkDiscussion(c, token) {
   const [, owner, repo, number] = m;
   // The newest few comments come back with their authors, so a rise in the
   // count that is only her own answer does not ring the bell.
-  const q = `query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){discussion(number:$n){title url comments(last:5){totalCount nodes{author{login}}}}}}`;
+  const q = `query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){discussion(number:$n){title url comments(last:10){totalCount nodes{author{login} createdAt}}}}}`;
   let d;
   try {
     d = await graphql(token, q, { owner, repo, n: Number(number) });
@@ -102,10 +120,18 @@ async function checkDiscussion(c, token) {
   if (!disc) return null;
   const count = disc.comments?.totalCount ?? 0;
   const label = `${owner}/${repo} discussion #${number}`;
-  const newest = (disc.comments?.nodes || []).slice(-(Math.max(0, count - (c.last_seen_count ?? count))));
-  const someoneElse = newest.length === 0 ? true : newest.some((x) => (x.author?.login || 'unknown') !== ME);
+  // On a first check the watermark does not exist yet, so "new" means posted
+  // by someone else after she recorded the thread. Afterwards it means more
+  // comments than last time, again only counting other people's.
+  const nodes = disc.comments?.nodes || [];
+  const firstCheck = c.last_seen_count == null;
+  const newest = firstCheck
+    ? nodes.filter((x) => c.created_at && x.createdAt > c.created_at)
+    : nodes.slice(-Math.max(0, count - c.last_seen_count));
+  const someoneElse = newest.some((x) => (x.author?.login || 'unknown') !== ME);
+  const grew = firstCheck ? newest.length > 0 : count > c.last_seen_count;
 
-  if (c.last_seen_count != null && count > c.last_seen_count && someoneElse) {
+  if (grew && someoneElse) {
     add({
       kind: 'answer_reply',
       severity: 'action',
@@ -247,7 +273,7 @@ async function main() {
 
   const contributions = await select(
     'contributions',
-    '?select=id,kind,url,source_ref,title,state,last_seen_count&order=happened_at.desc&limit=100'
+    '?select=id,kind,url,source_ref,title,state,last_seen_count,created_at&order=happened_at.desc&limit=100'
   );
 
   const updates = [];
