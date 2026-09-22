@@ -9,6 +9,7 @@
 // LinkedIn. It is also how she would hear the day Vercel reopens the
 // Germany-remote support role she interviewed for.
 
+import { pathToFileURL } from 'node:url';
 import { select, upsert, updateEach, startRun, parseArgs } from './lib/db.mjs';
 import { UA, sleep } from './lib/sources.mjs';
 import { loadProfile, scoreJob } from './lib/jobfit/jobfit.mjs';
@@ -216,9 +217,15 @@ async function main() {
   await finish(true, { relevant: rows.length, new: fresh.length, closed: stale.length, boards: status });
 }
 
-main()
-  .then(() => setTimeout(() => process.exit(0), 200))
-  .catch((e) => {
-    console.error(e.message);
-    setTimeout(() => process.exit(1), 200);
-  });
+// Run only when invoked directly. scripts/rescore-linkedin.mjs imports
+// eligibleFrom from here, and importing must not start a board poll. Compared
+// through pathToFileURL because on Windows import.meta.url is file:///C:/...
+// while argv[1] is a bare path.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main()
+    .then(() => setTimeout(() => process.exit(0), 200))
+    .catch((e) => {
+      console.error(e.message);
+      setTimeout(() => process.exit(1), 200);
+    });
+}

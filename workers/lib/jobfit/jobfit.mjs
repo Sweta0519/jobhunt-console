@@ -65,9 +65,14 @@ const GERMAN_REQUIRED = [
 const GERMAN_OPTIONAL = /\bgerman\b[^.\n]{0,60}\b(plus|bonus|nice[- ]to[- ]have|advantage|beneficial|preferred|desirable|not required|optional|a big plus|would be)\b|\b(plus|bonus|nice[- ]to[- ]have|advantage|beneficial|preferred|desirable|optional)\b[^.\n]{0,60}\bgerman\b/i;
 const GERMAN_WORDS = /\b(und|der|die|das|mit|für|nicht|wir|sie|eine|einen|unsere|deine|dein|bei|aus|auch|werden|sind|oder|wird|über|nach|kannst|bist|haben|zum|zur)\b/gi;
 
+// German named as one acceptable language among several: "Fluent in Spanish,
+// Dutch, German, or another European language". That is a requirement for a
+// language, not for German, and it read as GERMAN REQUIRED until this rule.
+const GERMAN_ONE_OF = /\b(one of|any of|or another|or other|or any|either)\b[^.\n]{0,80}\bgerman\b|\bgerman\b[^.\n]{0,60}\bor (another|other|any|a second)\b[^.\n]{0,30}\blanguage/i;
+
 export function detectGerman(text) {
   const t = String(text || '');
-  const optional = GERMAN_OPTIONAL.test(t);
+  const optional = GERMAN_OPTIONAL.test(t) || GERMAN_ONE_OF.test(t);
   const requiredHits = GERMAN_REQUIRED.filter((re) => re.test(t)).length;
   const germanWordCount = (t.match(GERMAN_WORDS) || []).length;
   const writtenInGerman = germanWordCount > 40 && germanWordCount / Math.max(1, t.split(/\s+/).length) > 0.06;
@@ -193,7 +198,9 @@ export function scoreJob(job, profile) {
   const loc = locationFit(job, profile);
   const company = companyFit(job);
   const senior = seniorityFit(job.title, job.description, profile);
-  const german = detectGerman(job.description || '');
+  // The title counts too: "Product Support Specialist (German-speaking)" said
+  // it in the title and nowhere the detector looked, and sat in the Open view.
+  const german = detectGerman(`${job.title || ''}\n${job.description || ''}`);
   const lang = german.required ? 0 : german.optional ? 4 : 5;
   const total = Math.round(role.score + skills.score + loc.score + company.score + senior.score + lang);
   return {
