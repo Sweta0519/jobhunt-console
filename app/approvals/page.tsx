@@ -33,8 +33,14 @@ export default async function Approvals() {
   const previews = await postPreviews(supabase)
 
   const outreach = (outreachRes.data as Outreach[]) || []
-  const posts = (postsRes.data as Post[]) || []
+  const allPosts = (postsRes.data as Post[]) || []
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
+  // Only a draft is waiting on her word. An approved post is waiting on the
+  // clock, and it belongs on this page only so she can still pull it back.
+  // Counting it as "waiting on you" made the page cry wolf about her own
+  // decisions.
+  const posts = allPosts.filter((p) => p.status === 'draft')
+  const scheduled = allPosts.filter((p) => p.status !== 'draft')
   const total = outreach.length + posts.length
 
   return (
@@ -93,6 +99,36 @@ export default async function Approvals() {
             })
           )}
         </Section>
+
+        {scheduled.length > 0 && (
+          <Section
+            title={`Scheduled (${scheduled.length})`}
+            hint="Already approved. These publish on their morning without you; they are here only so you can still pull one back."
+          >
+            {scheduled.map((p) => (
+              <article key={p.id} className="card content-item">
+                <div className="spread">
+                  <h3 className="card-title">{p.title || p.id}</h3>
+                  <StatusBadge status={p.status} />
+                </div>
+                <div className="card-meta">
+                  {formatDay(p.post_date)} · {p.format} · {p.pillar}
+                </div>
+                <div className="row" style={{ marginTop: 12 }}>
+                  <Link className="btn" href={`/posts/${p.id}`}>
+                    Details
+                  </Link>
+                  <ActionButton
+                    action={skipPost.bind(null, p.id)}
+                    confirm={`Pull "${p.title || p.id}" back? It will not publish ${formatDay(p.post_date)}.`}
+                  >
+                    Pull back
+                  </ActionButton>
+                </div>
+              </article>
+            ))}
+          </Section>
+        )}
 
         <Section
           title="Outreach"
