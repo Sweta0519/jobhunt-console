@@ -184,8 +184,11 @@ async function main() {
       await sleep(3000);
       content = { media: { id: init.image, altText: (row.alt_text || row.title || '').slice(0, 4000) } };
     } else if (row.format === 'deck' && rendered.pdf) {
+      // renderItem returns the PDF as an object carrying its path; putBinary
+      // reads a path. The first deck through this worker (p_0006, 22 Sep)
+      // failed on exactly that, after the card path had worked the day before.
       const init = await withRetry(() => client.initDocument(author), 'initDocument');
-      await withRetry(() => client.putBinary(init.uploadUrl, rendered.pdf), 'upload');
+      await withRetry(() => client.putBinary(init.uploadUrl, rendered.pdf.path), 'upload');
       await sleep(4000);
       content = { media: { id: init.document, title: (row.title || 'Carousel').slice(0, 400) } };
     }

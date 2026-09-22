@@ -54,7 +54,16 @@ async function request(method, path, { body, headers = {}, query = '' } = {}) {
       res.status === 404
         ? ` (is "${SCHEMA}" added under Settings -> API -> Exposed schemas?)`
         : '';
-    throw new Error(`${method} ${path} -> ${res.status}${hint}: ${text.slice(0, 400)}`);
+    // PostgREST puts the useful part last: `message` names the column, `details`
+    // is the whole failing row. Cutting the body at 400 characters once hid the
+    // column name behind a Stripe job description, and a morning's run failed
+    // with nothing in the log to say why.
+    let detail = text;
+    try {
+      const j = JSON.parse(text);
+      detail = [j.message, j.hint, j.details].filter(Boolean).join(' | ');
+    } catch {}
+    throw new Error(`${method} ${path} -> ${res.status}${hint}: ${detail.slice(0, 1500)}`);
   }
   return text ? JSON.parse(text) : null;
 }

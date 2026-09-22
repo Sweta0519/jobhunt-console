@@ -173,15 +173,19 @@ async function main() {
   }
 
   // A row already in the table keeps whatever she decided in the console.
+  // Every row must carry an explicit status, not only the known ones: the
+  // batch upsert gives all rows the same key set, so a new posting sitting
+  // beside preserved rows would otherwise be sent with status null, and an
+  // explicit null beats the column default. That is how the first genuinely
+  // new posting after the import (a Stripe role on 22 Sep) failed the whole
+  // daily run with "null value in column status".
   const keep = await select('jobs', '?select=id,status,applied_at,notes');
   const byId = new Map(keep.map((k) => [k.id, k]));
   for (const r of rows) {
     const prev = byId.get(r.id);
-    if (prev) {
-      r.status = prev.status;
-      r.applied_at = prev.applied_at;
-      r.notes = prev.notes;
-    }
+    r.status = prev?.status ?? 'found';
+    r.applied_at = prev?.applied_at ?? null;
+    r.notes = prev?.notes ?? null;
   }
   await upsert('jobs', rows);
 
