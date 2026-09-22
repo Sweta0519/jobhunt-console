@@ -51,17 +51,37 @@ async function checkGitHubThread(c, token) {
     });
   }
   if (c.last_seen_count != null && comments > c.last_seen_count) {
-    add({
-      kind: 'pr_comment',
-      severity: 'action',
-      title: `New reply on ${label}`,
-      body: issue.title,
-      url: issue.html_url,
-      entity_ref: c.source_ref || c.url,
-      dedupe_key: `comment:${label}:${comments}`,
-    });
+    // The count alone cannot tell her reply from someone else's. Her own two
+    // comments on vercel/vercel#17605 rang the bell as "new reply", so look at
+    // who wrote the new ones and stay quiet if it was only her.
+    const fresh = await newCommentsBy(owner, repo, number, comments - c.last_seen_count, token);
+    if (fresh.some((login) => login !== ME)) {
+      add({
+        kind: 'pr_comment',
+        severity: 'action',
+        title: `New reply on ${label}`,
+        body: issue.title,
+        url: issue.html_url,
+        entity_ref: c.source_ref || c.url,
+        dedupe_key: `comment:${label}:${comments}`,
+      });
+    }
   }
   return { id: c.id, state, last_seen_count: comments, last_checked_at: new Date().toISOString() };
+}
+
+/** Her GitHub login; anything she writes herself is not news to her. */
+const ME = 'Sweta0519';
+
+/** Logins of the newest `n` comments on an issue or pull request. */
+async function newCommentsBy(owner, repo, number, n, token) {
+  const r = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments?per_page=${Math.min(100, Math.max(1, n))}&sort=created&direction=desc`,
+    { headers: { Accept: 'application/vnd.github+json', 'User-Agent': UA, ...(token ? { Authorization: `Bearer ${token}` } : {}) } }
+  );
+  if (!r.ok) return ['unknown']; // fail open: better one spurious bell than a missed reply
+  const list = await r.json();
+  return list.slice(0, n).map((x) => x.user?.login || 'unknown');
 }
 
 /** A discussion comment she posted; watch for replies after hers. */
@@ -69,7 +89,9 @@ async function checkDiscussion(c, token) {
   const m = c.url.match(/github\.com\/([^/]+)\/([^/]+)\/discussions\/(\d+)/);
   if (!m || !token) return null;
   const [, owner, repo, number] = m;
-  const q = `query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){discussion(number:$n){title url comments{totalCount}}}}`;
+  // The newest few comments come back with their authors, so a rise in the
+  // count that is only her own answer does not ring the bell.
+  const q = `query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){discussion(number:$n){title url comments(last:5){totalCount nodes{author{login}}}}}}`;
   let d;
   try {
     d = await graphql(token, q, { owner, repo, n: Number(number) });
@@ -80,8 +102,10 @@ async function checkDiscussion(c, token) {
   if (!disc) return null;
   const count = disc.comments?.totalCount ?? 0;
   const label = `${owner}/${repo} discussion #${number}`;
+  const newest = (disc.comments?.nodes || []).slice(-(Math.max(0, count - (c.last_seen_count ?? count))));
+  const someoneElse = newest.length === 0 ? true : newest.some((x) => (x.author?.login || 'unknown') !== ME);
 
-  if (c.last_seen_count != null && count > c.last_seen_count) {
+  if (c.last_seen_count != null && count > c.last_seen_count && someoneElse) {
     add({
       kind: 'answer_reply',
       severity: 'action',

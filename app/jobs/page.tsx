@@ -13,7 +13,7 @@ export const metadata = { title: 'Jobs' }
 export default async function Jobs({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; outcome?: string; year?: string }>
+  searchParams: Promise<{ view?: string; outcome?: string; year?: string; sort?: string }>
 }) {
   const sp = await searchParams
   const view = sp.view || 'open'
@@ -45,7 +45,15 @@ export default async function Jobs({
   const years = [...new Set(appliedAll.map(yearOf).filter(Boolean))].sort().reverse()
   const applied = year === 'all' ? appliedAll : appliedAll.filter((j) => yearOf(j) === year)
   const german = all.filter((j) => j.german_required && !j.closed)
-  const open = all.filter((j) => j.eligible && !j.closed && !APPLIED.includes(j.status))
+  // Newest first by default. A role posted this week she can still be early
+  // to; a high-scoring one from three weeks ago has already been picked over.
+  // Score remains one tap away.
+  const sort = sp.sort === 'score' ? 'score' : 'newest'
+  const postedAt = (j: Job) => j.posted_date || j.first_seen_at?.slice(0, 10) || ''
+  const byNewest = (a: Job, b: Job) => postedAt(b).localeCompare(postedAt(a)) || (b.score ?? -1) - (a.score ?? -1)
+  const open = all
+    .filter((j) => j.eligible && !j.closed && !APPLIED.includes(j.status))
+    .sort(sort === 'newest' ? byNewest : (a, b) => (b.score ?? -1) - (a.score ?? -1))
   const funnel = {
     applied: applied.length,
     interviewed: applied.filter((j) => j.interviewed || j.status === 'interview').length,
@@ -83,6 +91,16 @@ export default async function Jobs({
           <Tab href="/jobs?view=applied" label={`Applied ${appliedAll.length}`} active={view === 'applied'} />
           <Tab href="/jobs?view=german" label={`Needs German ${german.length}`} active={view === 'german'} />
         </div>
+
+        {view === 'open' && open.length > 0 && (
+          <div className="row" style={{ marginBottom: 14 }}>
+            <Tab href="/jobs" label="Newest first" active={sort === 'newest'} />
+            <Tab href="/jobs?sort=score" label="Best match first" active={sort === 'score'} />
+            <span className="card-meta num" style={{ marginLeft: 'auto' }}>
+              {open.filter((j) => postedAt(j) >= new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)).length} posted in the last 7 days
+            </span>
+          </div>
+        )}
 
         {view === 'applied' && appliedAll.length > 0 && (
           <>
