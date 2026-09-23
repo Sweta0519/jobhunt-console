@@ -76,6 +76,54 @@ const BOARDS = {
 };
 
 /**
+ * Remote Rocketship, an aggregator, filtered to her titles and Germany. Its
+ * listing page is server-rendered Next.js with the jobs in __NEXT_DATA__, and
+ * robots.txt allows the path. Pagination is client-side and ?page= is ignored
+ * by the server, so this reads the first page only: sorted newest first and
+ * with about fourteen additions a week, twenty a day covers everything that
+ * arrives. Descriptions are not in the payload; the two summaries, the tech
+ * stack and the language flags stand in, and requiredLanguages is a cleaner
+ * German signal than any regex over prose.
+ */
+const RR_URL =
+  'https://www.remoterocketship.com/remote-jobs/?page=1&sort=DateAdded' +
+  '&jobTitle=Customer%2520Support%2520Engineer%2CTechnical%2520Support%2520Engineer%2CSupport%2520Engineer' +
+  '%2CTechnical%2520Support%2520Specialist%2CCustomer%2520Success%2520Engineer%2CClient%2520Support%2520Engineer' +
+  '&locations=Germany';
+
+async function fetchRemoteRocketship() {
+  const r = await fetch(RR_URL, { headers: { 'User-Agent': UA, Accept: 'text/html' }, signal: AbortSignal.timeout(25000) });
+  if (!r.ok) throw new Error(`remoterocketship -> ${r.status}`);
+  const html = await r.text();
+  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+  if (!m) throw new Error('remoterocketship: __NEXT_DATA__ not found (page layout changed?)');
+  const jobs = JSON.parse(m[1])?.props?.pageProps?.initialJobOpenings || [];
+  return jobs.map((x) => {
+    const langs = Array.isArray(x.requiredLanguages) ? x.requiredLanguages : [];
+    return {
+      nativeId: String(x.id),
+      title: x.roleTitle || '',
+      url: x.url,
+      location: [x.location, x.locationType === 'remote' ? 'Remote' : x.locationType || ''].filter(Boolean).join(' '),
+      description: [x.jobDescriptionSummary, x.twoLineJobDescriptionSummary, (x.techStack || []).join(', ')].filter(Boolean).join(' '),
+      postedAt: x.created_at || null,
+      company: { name: x.company?.name || '', slug: x.company?.slug || '', homepage: x.company?.homePageURL || null },
+      remote: x.locationType === 'remote',
+      // The aggregator read the posting; trust its language flags over our regex.
+      germanFlag: langs.includes('de') || x.descriptionLanguage === 'de',
+      languageNote:
+        x.descriptionLanguage === 'de'
+          ? 'posting written in German (Remote Rocketship)'
+          : langs.length
+            ? `required languages per Remote Rocketship: ${langs.join(', ')}`
+            : '',
+      senior: !!x.isSenior,
+      ghostScore: x.ghostScore ?? null,
+    };
+  });
+}
+
+/**
  * Her rule, applied to a board posting. Same shape as the import's check:
  * Germany or an EU/EMEA-wide posting, or a bare "Remote" that names no country
  * yet. A single non-German country never qualifies, whatever "remote" it adds.
@@ -109,7 +157,11 @@ async function main() {
     return;
   }
 
-  const existing = new Set((await select('jobs', '?select=id')).map((j) => j.id));
+  const known = await select('jobs', '?select=id,url');
+  const existing = new Set(known.map((j) => j.id));
+  // The aggregator relays postings the board pollers may already hold; the
+  // employer URL is the same in both, so it is the dedupe key across sources.
+  const knownUrls = new Set(known.map((j) => (j.url || '').replace(/\/+$/, '').toLowerCase()).filter(Boolean));
   const rows = [];
   const fresh = [];
   const status = {};
@@ -164,6 +216,56 @@ async function main() {
     await sleep(600);
   }
 
+  // Remote Rocketship: newest twenty across many employers, most of them not on
+  // any board we poll. Companies it names that the console has never seen are
+  // created minimally so the foreign key holds; logos can follow.
+  const newCompanies = new Map();
+  try {
+    const rr = await fetchRemoteRocketship();
+    let kept = 0;
+    let dup = 0;
+    for (const p of rr) {
+      if (!RELEVANT.test(p.title) || CLEARLY_NOT.test(p.title)) continue;
+      const urlKey = (p.url || '').replace(/\/+$/, '').toLowerCase();
+      const id = `rr:${p.nativeId}`;
+      if (urlKey && knownUrls.has(urlKey) && !existing.has(id)) { dup++; continue; }
+      const slug = (p.company.slug || p.company.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      if (!slug) continue;
+      const scored = scoreJob({ title: p.title, company: p.company.name, location: p.location, description: p.description }, profile);
+      const germanRequired = p.germanFlag || scored.germanRequired;
+      const eligible = eligibleFrom(p.location, p.remote, germanRequired);
+      newCompanies.set(slug, { slug, name: p.company.name || slug, domain: p.company.homepage ? p.company.homepage.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : null });
+      const row = {
+        id,
+        source: 'remoterocketship',
+        company_slug: slug,
+        company: p.company.name || slug,
+        title: p.title,
+        url: p.url,
+        location: p.location || null,
+        workplace_type: p.remote ? 'Remote' : null,
+        posted_date: p.postedAt ? p.postedAt.slice(0, 10) : null,
+        excerpt: p.description.slice(0, 400) || null,
+        score: scored.total,
+        score_breakdown: scored.breakdown,
+        score_notes: { ...scored.notes, language: p.languageNote ? `${p.languageNote}${germanRequired ? ' (GERMAN REQUIRED)' : ''}` : scored.notes.language, ghost: p.ghostScore != null ? `Remote Rocketship ghost score ${p.ghostScore}` : undefined },
+        german_required: germanRequired,
+        remote: p.remote,
+        eligible,
+        closed: false,
+        last_seen_at: new Date().toISOString(),
+      };
+      rows.push(row);
+      kept++;
+      if (!existing.has(id) && eligible && scored.total >= min) fresh.push(row);
+    }
+    status.remoterocketship = `${rr.length} listed, ${kept} relevant, ${dup} already known from a board`;
+    console.log(`  ${'remoterocketship'.padEnd(18)} ${String(rr.length).padStart(4)} listing(s), ${kept} relevant, ${dup} duplicate(s) of board postings`);
+  } catch (e) {
+    status.remoterocketship = `failed: ${e.message.slice(0, 80)}`;
+    console.warn(`  remoterocketship: ${e.message}`);
+  }
+
   rows.sort((a, b) => b.score - a.score);
   if (args['dry-run']) {
     console.log(`\n${rows.length} relevant, ${fresh.length} new and eligible at ${min}+`);
@@ -180,6 +282,14 @@ async function main() {
   // explicit null beats the column default. That is how the first genuinely
   // new posting after the import (a Stripe role on 22 Sep) failed the whole
   // daily run with "null value in column status".
+  // Companies first, or the jobs insert fails its foreign key. Only slugs the
+  // console has never seen are written, so nothing existing is overwritten.
+  if (newCompanies.size) {
+    const have = new Set((await select('companies', '?select=slug')).map((c) => c.slug));
+    const missing = [...newCompanies.values()].filter((c) => !have.has(c.slug));
+    if (missing.length) await upsert('companies', missing, { onConflict: 'slug' });
+  }
+
   const keep = await select('jobs', '?select=id,status,applied_at,notes');
   const byId = new Map(keep.map((k) => [k.id, k]));
   for (const r of rows) {
