@@ -46,6 +46,9 @@ async function withRetry(fn, label) {
 
 const berlinToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });
 
+/** LinkedIn's ceiling for a multi-image post. Her decks run 8 to 10 slides. */
+const MAX_IMAGES = 20;
+
 /** The poster template reads these from disk; fetch them once per run. */
 async function fetchAssets() {
   const base = process.env.SUPABASE_URL.replace(/\/$/, '');
@@ -183,10 +186,33 @@ async function main() {
       await withRetry(() => client.putBinary(init.uploadUrl, files[0]), 'upload');
       await sleep(3000);
       content = { media: { id: init.image, altText: (row.alt_text || row.title || '').slice(0, 4000) } };
+    } else if (row.format === 'deck' && files.length && !row.as_document) {
+      // Slides go up as a multi-image post, not a PDF document. LinkedIn
+      // refuses to boost a document post: "Boosting is only available for
+      // text, single or multi-image, article, video, and newsletter posts."
+      // A deck she cannot promote only reaches people who already follow her,
+      // and multi-image keeps the swipe while staying eligible. The PDF is
+      // still rendered, for the notes repo and for export.
+      const slides = files.slice(0, MAX_IMAGES);
+      const images = [];
+      for (const [i, file] of slides.entries()) {
+        const init = await withRetry(() => client.initImage(author), `initImage ${i + 1}/${slides.length}`);
+        await withRetry(() => client.putBinary(init.uploadUrl, file), `upload ${i + 1}/${slides.length}`);
+        images.push({
+          id: init.image,
+          altText: `Slide ${i + 1} of ${slides.length}. ${(row.alt_text || row.title || '').slice(0, 3900)}`,
+        });
+        await sleep(1200);
+      }
+      if (files.length > MAX_IMAGES) {
+        console.warn(`  ${files.length} slides, LinkedIn takes ${MAX_IMAGES}; the rest were left out`);
+      }
+      console.log(`  uploaded ${images.length} slide(s) as a multi-image post`);
+      await sleep(4000);
+      content = { multiImage: { images } };
     } else if (row.format === 'deck' && rendered.pdf) {
-      // renderItem returns the PDF as an object carrying its path; putBinary
-      // reads a path. The first deck through this worker (p_0006, 22 Sep)
-      // failed on exactly that, after the card path had worked the day before.
+      // Kept for a post explicitly marked as_document. renderItem returns the
+      // PDF as an object carrying its path; putBinary reads a path.
       const init = await withRetry(() => client.initDocument(author), 'initDocument');
       await withRetry(() => client.putBinary(init.uploadUrl, rendered.pdf.path), 'upload');
       await sleep(4000);
