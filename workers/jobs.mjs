@@ -14,10 +14,18 @@ import { select, upsert, updateEach, startRun, parseArgs } from './lib/db.mjs';
 import { UA, sleep } from './lib/sources.mjs';
 import { loadProfile, scoreJob } from './lib/jobfit/jobfit.mjs';
 
-/** Titles worth scoring at all. Everything else on a 600-job board is noise. */
-const RELEVANT =
-  /(support|solutions?|success|technical account|implementation|onboarding|service desk|helpdesk|escalation)/i;
-const CLEARLY_NOT =
+/**
+ * Titles worth scoring at all. Everything else on a 600-job board is noise.
+ *
+ * "customer engineer" and "forward deployed" are here because Reap's Technical
+ * Customer Engineer (EMEA) matched none of the original words and was dropped,
+ * although the description is L2/L3 escalation work and the posting names
+ * Germany. Several fintechs now use those titles for what everyone else calls
+ * a support or solutions engineer.
+ */
+export const RELEVANT =
+  /(support|solutions?|success|technical account|customer engineer|forward deployed|implementation|onboarding|service desk|helpdesk|escalation)/i;
+export const CLEARLY_NOT =
   /(intern|working student|werkstudent|praktik|sales development|account executive|recruiter|designer|marketing manager|data scientist|frontend|backend engineer|software engineer)/i;
 
 const strip = (html) =>
@@ -38,8 +46,8 @@ async function getJson(url) {
   return r.json();
 }
 
-/** Each board, normalised to one shape. */
-const BOARDS = {
+/** Each board, normalised to one shape. Exported so a board can be tested alone. */
+export const BOARDS = {
   async greenhouse(token) {
     const j = await getJson(`https://boards-api.greenhouse.io/v1/boards/${token}/jobs?content=true`);
     return (j.jobs || []).map((x) => ({
@@ -72,6 +80,50 @@ const BOARDS = {
       description: strip(x.descriptionPlain || x.description),
       postedAt: x.createdAt ? new Date(x.createdAt).toISOString() : null,
     }));
+  },
+  /**
+   * Teamtailor. No JSON API, but every career site publishes /jobs.rss with the
+   * full description and a tt:location block per country, which is a better
+   * location signal than the prose: a role open in five named countries says so
+   * in the feed even when the page header only reads "Multiple locations".
+   *
+   * The token is the career host, e.g. careers.reap.global.
+   */
+  async teamtailor(token) {
+    const r = await fetch(`https://${token}/jobs.rss`, {
+      headers: { 'User-Agent': UA, Accept: 'application/rss+xml, application/xml' },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!r.ok) throw new Error(`https://${token}/jobs.rss -> ${r.status}`);
+    const xml = await r.text();
+    const one = (s, tag) => {
+      const m = s.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`));
+      return m ? m[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : '';
+    };
+    return xml
+      .split('<item>')
+      .slice(1)
+      .map((item) => {
+        const url = one(item, 'link');
+        // .../jobs/8066197-technical-customer-engineer-emea
+        const nativeId = (url.match(/\/jobs\/(\d+)/) || [])[1] || url;
+        const countries = [
+          ...new Set(
+            [...item.matchAll(/<tt:country>([^<]*)<\/tt:country>/g)].map((m) => m[1].trim()).filter(Boolean)
+          ),
+        ];
+        const description = strip(one(item, 'description'));
+        const remote = /\bremote\b/i.test(description);
+        return {
+          nativeId,
+          title: one(item, 'title'),
+          url,
+          location: [countries.join(', '), remote ? 'Remote' : ''].filter(Boolean).join(' '),
+          description,
+          postedAt: one(item, 'pubDate') ? new Date(one(item, 'pubDate')).toISOString() : null,
+        };
+      })
+      .filter((p) => p.title && p.url);
   },
 };
 
@@ -303,7 +355,7 @@ async function main() {
   // A board posting that disappeared is closed, not deleted: she may have applied.
   const seen = new Set(rows.map((r) => r.id));
   const stale = keep
-    .filter((k) => /^(greenhouse|ashby|lever):/.test(k.id) && !seen.has(k.id))
+    .filter((k) => /^(greenhouse|ashby|lever|teamtailor):/.test(k.id) && !seen.has(k.id))
     .map((k) => ({ id: k.id, closed: true }));
   if (stale.length) await updateEach('jobs', 'id', stale);
 

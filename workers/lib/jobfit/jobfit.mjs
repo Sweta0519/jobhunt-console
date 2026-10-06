@@ -88,7 +88,11 @@ export function locationFit(job, profile) {
   const wt = String(job.workplaceType || '').toLowerCase();
   const title = String(job.title || '').toLowerCase();
   const desc = String(job.description || '').toLowerCase();
-  const remote = /remote/.test(wt) || /\(remote\)/.test(loc) || /\bremote\b/.test(title);
+  // A bare "Remote" in the location counts, not only "(Remote)". Ashby appends
+  // it without brackets and so does the Teamtailor reader, so Reap's
+  // "United Kingdom, Ireland, Czechia, Germany, Poland Remote" was being read
+  // as on-site and scored 5 instead of 20.
+  const remote = /remote/.test(wt) || /\bremote\b/.test(loc) || /\bremote\b/.test(title);
   const hybrid = /hybrid/.test(wt) || /hybrid/.test(loc);
   const L = profile.locations;
   const inRegion = L.remoteRegions.some((r) => loc.includes(r)) || /\bemea\b|\beurope\b/.test(title);
