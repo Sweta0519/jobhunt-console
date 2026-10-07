@@ -133,7 +133,10 @@ export function roleFit(title, profile) {
     if (t.includes(r)) { const s = 25 - Math.min(10, i); if (s > best) { best = s; matched = r; } }
   });
   if (!best) {
-    if (/support engineer|technical support|customer support|support specialist|customer engineer|solutions engineer|success engineer/.test(t)) { best = 15; matched = 'support-family title'; }
+    // "Forward deployed engineer" is the post-sales technical title fintechs and
+    // AI companies now use for the same work. Without it, n8n's Forward Deployed
+    // Engineer - EMEA (Germany, remote) scored 0 for role and 49 overall.
+    if (/support engineer|technical support|customer support|support specialist|customer engineer|solutions engineer|success engineer|forward deployed/.test(t)) { best = 15; matched = 'support-family title'; }
     else if (/support|customer/.test(t)) { best = 8; matched = 'support-related title'; }
   }
   const penalty = profile.rolePenalties.find((p) => t.includes(p));
