@@ -102,7 +102,10 @@ export function locationFit(job, profile) {
   let score, label;
   if (remote && usOnly) { score = 0; label = 'remote, but US/Canada only'; }
   else if (remote && (loc.includes('germany') || loc.includes('deutschland'))) { score = 20; label = 'remote, Germany'; }
-  else if (remote && inRegion && /\b(germany|deutschland|anywhere in (the )?(eu|europe|emea)|across (the )?(eu|europe|emea)|any (eu|european) country|eu[- ]wide|europe[- ]wide|emea[- ]wide|all (eu|european) countries|remote (across|within|in) (the )?(eu|europe|emea))\b/.test(desc)) { score = 19; label = `remote, ${job.location}, text confirms Germany/EU-wide` ; }
+  // "Europe, the Middle East, or Africa" spelled out is EMEA, and postings that
+  // write it that way were being treated as unconfirmed. Hercules' EMEA support
+  // role says "people living in Europe, the middle east, or Africa".
+  else if (remote && inRegion && /\b(germany|deutschland|anywhere in (the )?(eu|europe|emea)|across (the )?(eu|europe|emea)|any (eu|european) country|eu[- ]wide|europe[- ]wide|emea[- ]wide|all (eu|european) countries|remote (across|within|in) (the )?(eu|europe|emea)|europe,? (the )?middle east, ?(and|or) africa)\b/.test(desc)) { score = 19; label = `remote, ${job.location}, text confirms Germany/EU-wide` ; }
   else if (remote && inRegion) { score = 12; label = `remote, "${job.location}" is only LinkedIn's tag; text does not confirm hiring in Germany, verify with the poster`; }
   else if (remote && /\b(germany|deutschland)\b/.test(desc) && /\b(emea|europe|european|eu[- ]wide|across the eu|anywhere in the eu|any eu country|following (countries|places|locations))\b/.test(desc)) { score = 14; label = `remote, posted for ${job.location} but text names Germany among allowed countries; verify`; }
   else if (remote && okCountry) { score = 0; label = `remote, but posted for ${job.location}, not Germany`; }
