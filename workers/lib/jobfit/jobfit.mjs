@@ -200,6 +200,41 @@ export function companyFit(job) {
   return { score: 3, label: 'company type unknown' };
 }
 
+// ---------- Production code expectation
+/**
+ * Some roles in the support family are really software engineering jobs that
+ * happen to face customers. GitLab's Forward Deployed Engineer opens with
+ * "Contribute production-quality code to GitLab's product", which is a
+ * different job from Reap's Technical Customer Engineer, and nothing else here
+ * could tell them apart: both score full marks on title, location and skills.
+ *
+ * This is a flag with a cost, not a disqualifier. Writing code is not the
+ * problem; being hired against a product codebase she has never shipped to is.
+ */
+export function codeExpectation(description) {
+  const d = String(description || '').toLowerCase();
+  const strong = [
+    /contribute production[- ]quality code/,
+    /write production code/,
+    /ship (features|production code)/,
+    /(develop|build) (bug fixes|features)[^.]{0,40}(product|codebase)/,
+    /contribute code to (the|our) (product|codebase|core)/,
+    /merge request creation[^.]{0,60}(testing|review)/,
+  ];
+  const soft = [
+    /pull requests?/,
+    /merge requests?/,
+    /our codebase/,
+    /software engineering (background|experience)/,
+    /years? (of )?(professional )?(software|programming) (engineering |development )?experience/,
+  ];
+  const hit = strong.find((re) => re.test(d));
+  if (hit) return { penalty: 10, label: 'expects production code in their codebase' };
+  const n = soft.filter((re) => re.test(d)).length;
+  if (n >= 2) return { penalty: 4, label: 'some engineering-process expectation' };
+  return { penalty: 0, label: '' };
+}
+
 // ---------- Total
 export function scoreJob(job, profile) {
   const text = `${job.title}\n${job.description || ''}`;
@@ -212,11 +247,12 @@ export function scoreJob(job, profile) {
   // it in the title and nowhere the detector looked, and sat in the Open view.
   const german = detectGerman(`${job.title || ''}\n${job.description || ''}`);
   const lang = german.required ? 0 : german.optional ? 4 : 5;
-  const total = Math.round(role.score + skills.score + loc.score + company.score + senior.score + lang);
+  const code = codeExpectation(job.description);
+  const total = Math.round(role.score + skills.score + loc.score + company.score + senior.score + lang - code.penalty);
   return {
     total: Math.max(0, Math.min(100, total)),
-    breakdown: { role: role.score, skills: skills.score, location: loc.score, company: company.score, seniority: senior.score, language: lang },
-    notes: { role: role.matched + (role.penalty ? ` (penalty: ${role.penalty})` : ''), skills: skills.hits.slice(0, 14).join(', '), location: loc.label + (loc.restrictedTo ? `; restricted to ${loc.restrictedTo}` : ''), company: company.label, seniority: senior.label, language: (german.required ? 'GERMAN REQUIRED' : german.optional ? 'German nice-to-have' : 'no German requirement found') + (german.evidence ? ` ("${german.evidence.slice(0, 90)}")` : '') },
+    breakdown: { role: role.score, skills: skills.score, location: loc.score, company: company.score, seniority: senior.score, language: lang, code: -code.penalty },
+    notes: { role: role.matched + (role.penalty ? ` (penalty: ${role.penalty})` : ''), code: code.label, skills: skills.hits.slice(0, 14).join(', '), location: loc.label + (loc.restrictedTo ? `; restricted to ${loc.restrictedTo}` : ''), company: company.label, seniority: senior.label, language: (german.required ? 'GERMAN REQUIRED' : german.optional ? 'German nice-to-have' : 'no German requirement found') + (german.evidence ? ` ("${german.evidence.slice(0, 90)}")` : '') },
     germanRequired: german.required,
     remote: loc.remote,
   };
