@@ -10,6 +10,7 @@ export const metadata = { title: 'Record' }
 type Contribution = {
   id: string; kind: string; company: string | null; title: string
   url: string; happened_at: string; source_ref: string | null
+  state: string | null
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -19,6 +20,18 @@ const KIND_LABEL: Record<string, string> = {
   post: 'Post',
   runbook: 'Runbook',
 }
+
+// Merged and open are the distinction a reader actually cares about, and the
+// card showed neither. State is meaningless for a post or a runbook, so it is
+// only rendered where it says something.
+const STATE_LABEL: Record<string, string> = {
+  merged: 'Merged',
+  open: 'Open',
+  closed: 'Closed',
+}
+const HAS_STATE = new Set(['pr', 'issue', 'answer'])
+const stateOf = (r: Contribution) =>
+  HAS_STATE.has(r.kind) && r.state && STATE_LABEL[r.state] ? STATE_LABEL[r.state] : null
 
 export default async function Record({
   searchParams,
@@ -75,7 +88,10 @@ export default async function Record({
   const activeWeeks = weeks.filter((w) => w.n > 0).length
 
   const markdown = rows
-    .map((r) => `- [${r.title}](${r.url}) — ${KIND_LABEL[r.kind] ?? r.kind}${r.company ? `, ${r.company}` : ''}, ${formatDay(r.happened_at)}`)
+    .map(
+      (r) =>
+        `- [${r.title}](${r.url}) — ${stateOf(r) ? `${stateOf(r)} ` : ''}${KIND_LABEL[r.kind] ?? r.kind}${r.company ? `, ${r.company}` : ''}, ${formatDay(r.happened_at)}`
+    )
     .join('\n')
 
   const companies = [...new Set(rows.map((r) => r.company).filter(Boolean))] as string[]
@@ -152,7 +168,21 @@ export default async function Record({
                   <h3 className="card-title">
                     <ExternalLink href={r.url}>{r.title}</ExternalLink>
                   </h3>
-                  <span className="chip">{KIND_LABEL[r.kind] ?? r.kind}</span>
+                  <span style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    {stateOf(r) && (
+                      <span
+                        className="chip"
+                        style={
+                          r.state === 'merged'
+                            ? { background: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.35)', color: '#34d399' }
+                            : undefined
+                        }
+                      >
+                        {stateOf(r)}
+                      </span>
+                    )}
+                    <span className="chip">{KIND_LABEL[r.kind] ?? r.kind}</span>
+                  </span>
                 </div>
                 <div className="card-meta">
                   {r.company ? `${r.company} · ` : ''}
