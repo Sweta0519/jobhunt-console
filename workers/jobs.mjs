@@ -3,7 +3,7 @@
 //
 //   node workers/jobs.mjs [--dry-run] [--company vercel] [--min 70]
 //
-// Greenhouse, Ashby and Lever all publish open JSON. That is better than
+// Greenhouse, Ashby, Lever and Teamtailor all publish openly. That is better than
 // scraping LinkedIn in three ways: it is allowed, it carries the full
 // description so scoring is honest, and a role appears here before it reaches
 // LinkedIn. It is also how she would hear the day Vercel reopens the
@@ -23,8 +23,12 @@ import { loadProfile, scoreJob } from './lib/jobfit/jobfit.mjs';
  * Germany. Several fintechs now use those titles for what everyone else calls
  * a support or solutions engineer.
  */
+// 'solutions' is deliberately not matched on its own: Reap's "Senior Software
+// Engineer, Card Solutions" and "Engineering Manager, Card Solutions" are a
+// product line, not a role family, and both registered as relevant. Solutions
+// Engineer, Solutions Architect and Solutions Consultant are the real targets.
 export const RELEVANT =
-  /(support|solutions?|success|technical account|customer engineer|forward deployed|implementation|onboarding|service desk|helpdesk|escalation)/i;
+  /(support|solutions? (engineer|architect|consultant)|success|technical account|customer engineer|forward deployed|implementation|onboarding|service desk|helpdesk|escalation)/i;
 export const CLEARLY_NOT =
   /(intern|working student|werkstudent|praktik|sales development|account executive|recruiter|designer|marketing manager|data scientist|frontend|backend engineer|software engineer)/i;
 
