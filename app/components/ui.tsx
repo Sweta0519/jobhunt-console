@@ -119,6 +119,9 @@ export async function NavBar({ current, waiting }: { current: string; waiting: n
     { href: '/posts', label: 'Posts', primaryOnly: true },
     { href: '/companies', label: 'Companies' },
     { href: '/record', label: 'Record' },
+    // The only way in used to be the LinkedIn expiry warning, which nobody
+    // but her ever sees, so a second person could not find "change password".
+    { href: '/settings', label: 'Settings' },
   ].filter((l) => primary || !l.primaryOnly)
   const tabs = [
     { href: '/', label: 'Today' },
