@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RELEVANT, CLEARLY_NOT, titleFilters, withDefaults } from './jobs.mjs';
+import { RELEVANT, CLEARLY_NOT, titleFilters, withDefaults, scoreFor, eligibleFor } from './jobs.mjs';
 
 const keeps = (title) => RELEVANT.test(title) && !CLEARLY_NOT.test(title);
 
@@ -65,6 +65,31 @@ test("another field's titles replace hers, both ways", () => {
   assert.equal(f.relevant.test('Senior Software Engineer'), true);
   assert.equal(f.exclude.test('Senior Software Engineer'), false);
   assert.equal(f.relevant.test('Technical Support Engineer'), false);
+});
+
+test('remote-or-home drops an office job in another German city', () => {
+  const p = withDefaults({ roles: [], skills: {}, eligibility: 'remote-or-home', locations: { hybridOkCities: ['hamburg'] } });
+  assert.equal(eligibleFor('Berlin, Germany', false, false, p), false);
+  assert.equal(eligibleFor('Germany (Remote)', true, false, p), true);
+  assert.equal(eligibleFor('Hamburg, Germany', false, false, p), true);
+  assert.equal(eligibleFor('Remote: EMEA', true, true, p), false); // German required
+  // Without the switch, her rule is unchanged: any German city passes.
+  assert.equal(eligibleFor('Berlin, Germany', false, false, withDefaults({})), true);
+});
+
+test('an engineer is not docked for a posting that wants production code', () => {
+  const job = {
+    title: 'Senior Software Engineer',
+    company: 'Acme',
+    location: 'Remote, Germany',
+    description: 'You will contribute production-quality code to our product. Java, Kafka, AWS.',
+  };
+  const base = withDefaults({ roles: ['senior software engineer'], skills: { core: ['java', 'kafka', 'aws'] } });
+  const docked = scoreFor(job, base);
+  const engineer = scoreFor(job, { ...base, codePenalty: false });
+  assert.equal(docked.breakdown.code, -10);
+  assert.equal(engineer.breakdown.code, 0);
+  assert.equal(engineer.total, Math.min(100, docked.total + 10));
 });
 
 test("a stored profile does not inherit her support skills", () => {

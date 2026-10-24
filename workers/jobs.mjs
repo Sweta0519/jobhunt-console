@@ -230,6 +230,38 @@ export function titleFilters(profile) {
   };
 }
 
+/**
+ * eligibleFrom, narrowed by a profile. Her rule passes any German city, on-site
+ * included. `eligibility: "remote-or-home"` keeps only remote postings and
+ * ones in a hybridOkCities city, so a Berlin office job stops counting for
+ * someone who wants Germany-remote or Hamburg hybrid.
+ */
+export function eligibleFor(location, remote, germanRequired, profile) {
+  if (!eligibleFrom(location, remote, germanRequired)) return false;
+  if (profile.eligibility !== 'remote-or-home') return true;
+  const loc = String(location || '').toLowerCase();
+  const home = (profile.locations?.hybridOkCities || []).some((c) => loc.includes(c));
+  return home || remote === true || /\bremote\b/.test(loc);
+}
+
+/**
+ * scoreJob, with one switch for engineers. codeExpectation() docks up to ten
+ * points from a posting that wants production code, which is the right
+ * warning for her support-family search and exactly backwards for a software
+ * engineer. The jobfit code stays as copied from the skill; the switch lives
+ * here, set by `codePenalty: false` in a profile.
+ */
+export function scoreFor(job, profile) {
+  const s = scoreJob(job, profile);
+  if (profile.codePenalty !== false || !s.breakdown.code) return s;
+  return {
+    ...s,
+    total: Math.min(100, s.total - s.breakdown.code),
+    breakdown: { ...s.breakdown, code: 0 },
+    notes: { ...s.notes, code: '' },
+  };
+}
+
 async function main() {
   const args = parseArgs();
   let list = await owners();
@@ -309,12 +341,12 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
     let kept = 0;
     for (const p of postings) {
       if (!relevant.test(p.title) || exclude.test(p.title)) continue;
-      const scored = scoreJob(
+      const scored = scoreFor(
         { title: p.title, company: c.name, location: p.location, description: p.description },
         profile
       );
       const id = `${c.board_kind}:${c.board_token}:${p.nativeId}`;
-      const eligible = eligibleFrom(p.location, scored.remote, scored.germanRequired);
+      const eligible = eligibleFor(p.location, scored.remote, scored.germanRequired, profile);
       const row = {
         id,
         source: c.board_kind,
@@ -360,9 +392,9 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
       if (urlKey && knownUrls.has(urlKey) && !existing.has(id)) { dup++; continue; }
       const slug = (p.company.slug || p.company.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       if (!slug) continue;
-      const scored = scoreJob({ title: p.title, company: p.company.name, location: p.location, description: p.description }, profile);
+      const scored = scoreFor({ title: p.title, company: p.company.name, location: p.location, description: p.description }, profile);
       const germanRequired = p.germanFlag || scored.germanRequired;
-      const eligible = eligibleFrom(p.location, p.remote, germanRequired);
+      const eligible = eligibleFor(p.location, p.remote, germanRequired, profile);
       newCompanies.set(slug, { slug, name: p.company.name || slug, domain: p.company.homepage ? p.company.homepage.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : null });
       const row = {
         id,
