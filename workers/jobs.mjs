@@ -451,7 +451,7 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
     if (missing.length) await db.upsert('companies', missing, { onConflict: 'owner,slug' });
   }
 
-  const keep = await db.select('jobs', '?select=id,status,applied_at,notes');
+  const keep = await db.select('jobs', '?select=id,company_slug,status,applied_at,notes');
   const byId = new Map(keep.map((k) => [k.id, k]));
   for (const r of rows) {
     const prev = byId.get(r.id);
@@ -462,9 +462,12 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
   await db.upsert('jobs', rows, { onConflict: 'owner,id' });
 
   // A board posting that disappeared is closed, not deleted: she may have applied.
+  // Only when its board actually answered this run: a Datadog timeout once
+  // closed all 25 of its open roles, because "not seen" was read as "gone".
   const seen = new Set(rows.map((r) => r.id));
+  const answered = new Set(Object.entries(status).filter(([, v]) => typeof v === 'number').map(([k]) => k));
   const stale = keep
-    .filter((k) => /^(greenhouse|ashby|lever|teamtailor):/.test(k.id) && !seen.has(k.id))
+    .filter((k) => /^(greenhouse|ashby|lever|teamtailor):/.test(k.id) && !seen.has(k.id) && answered.has(k.company_slug))
     .map((k) => ({ id: k.id, closed: true }));
   if (stale.length) await db.updateEach('jobs', 'id', stale);
 
