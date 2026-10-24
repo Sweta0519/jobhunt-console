@@ -11,3 +11,5 @@ out/
 
 # typescript incremental build output
 *.tsbuildinfo
+
+graphify-out/

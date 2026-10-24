@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ThemeToggle } from './ThemeToggle'
 import { Bell } from './Bell'
+import { getSupabase } from '../lib/supabase'
 
 /**
  * The only component allowed to print a status word.
@@ -104,17 +105,21 @@ export function ExternalLink({ href, children }: { href: string; children: React
   )
 }
 
-export function NavBar({ current, waiting }: { current: string; waiting: number }) {
+export async function NavBar({ current, waiting }: { current: string; waiting: number }) {
+  // Questions and posts are hers alone; anyone else in the console has the
+  // job-hunt half, so those two tabs would only ever be empty for them.
+  const supabase = await getSupabase()
+  const { data: primary } = await supabase.rpc('is_primary')
   const links = [
     { href: '/', label: 'Today' },
     { href: '/approvals', label: 'Approvals' },
-    { href: '/questions', label: 'Questions' },
+    { href: '/questions', label: 'Questions', primaryOnly: true },
     { href: '/jobs', label: 'Jobs' },
     { href: '/outreach', label: 'Outreach' },
-    { href: '/posts', label: 'Posts' },
+    { href: '/posts', label: 'Posts', primaryOnly: true },
     { href: '/companies', label: 'Companies' },
     { href: '/record', label: 'Record' },
-  ]
+  ].filter((l) => primary || !l.primaryOnly)
   const tabs = [
     { href: '/', label: 'Today' },
     { href: '/approvals', label: 'Approvals', count: waiting },

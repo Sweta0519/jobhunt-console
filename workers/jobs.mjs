@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 // Finds new roles at her target companies, straight from their job boards.
 //
-//   node workers/jobs.mjs [--dry-run] [--company vercel] [--min 70]
+//   node workers/jobs.mjs [--dry-run] [--company vercel] [--min 70] [--owner <label|uuid>]
+//
+// Runs once per person in the console. Her profile is the committed
+// lib/jobfit/profile.json; anyone else's lives in their own `settings` row
+// `jobfit_profile`, so a second person's skills and rules never reach the
+// public repo. A person without one is skipped.
 //
 // Greenhouse, Ashby, Lever and Teamtailor all publish openly. That is better than
 // scraping LinkedIn in three ways: it is allowed, it carries the full
@@ -10,9 +15,9 @@
 // Germany-remote support role she interviewed for.
 
 import { pathToFileURL } from 'node:url';
-import { select, upsert, updateEach, startRun, parseArgs } from './lib/db.mjs';
+import { owners, forOwner, parseArgs } from './lib/db.mjs';
 import { UA, sleep } from './lib/sources.mjs';
-import { loadProfile, scoreJob } from './lib/jobfit/jobfit.mjs';
+import { DEFAULT_PROFILE, loadProfile, scoreJob } from './lib/jobfit/jobfit.mjs';
 
 /**
  * Titles worth scoring at all. Everything else on a 600-job board is noise.
@@ -147,8 +152,8 @@ const RR_URL =
   '%2CTechnical%2520Support%2520Specialist%2CCustomer%2520Success%2520Engineer%2CClient%2520Support%2520Engineer' +
   '&locations=Germany';
 
-async function fetchRemoteRocketship() {
-  const r = await fetch(RR_URL, { headers: { 'User-Agent': UA, Accept: 'text/html' }, signal: AbortSignal.timeout(25000) });
+async function fetchRemoteRocketship(url) {
+  const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'text/html' }, signal: AbortSignal.timeout(25000) });
   if (!r.ok) throw new Error(`remoterocketship -> ${r.status}`);
   const html = await r.text();
   const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
@@ -196,13 +201,79 @@ export function eligibleFrom(location, remote, germanRequired) {
   return rest === '' && remote !== false;
 }
 
+/**
+ * A stored profile, completed from the defaults. Skills are taken whole, not
+ * merged: the defaults are her support-engineering skills, and a person in
+ * another field must not inherit them.
+ */
+export function withDefaults(p) {
+  const base = structuredClone(DEFAULT_PROFILE);
+  return {
+    ...base,
+    ...p,
+    skills: p.skills || base.skills,
+    locations: { ...base.locations, ...(p.locations || {}) },
+    scan: { ...base.scan, ...(p.scan || {}) },
+  };
+}
+
+/**
+ * Title filters from the profile, as regex sources, or her defaults. Another
+ * field needs its own: CLEARLY_NOT drops "software engineer", which is exactly
+ * what a developer would be looking for.
+ */
+export function titleFilters(profile) {
+  const t = profile.titles || {};
+  return {
+    relevant: t.relevant ? new RegExp(t.relevant, 'i') : RELEVANT,
+    exclude: t.exclude ? new RegExp(t.exclude, 'i') : CLEARLY_NOT,
+  };
+}
+
 async function main() {
   const args = parseArgs();
-  const min = Number(args.min || 70);
-  const finish = args['dry-run'] ? async () => {} : await startRun('jobs');
-  const profile = loadProfile();
+  let list = await owners();
+  if (args.owner) list = list.filter((o) => o.id === args.owner || o.label === args.owner);
+  let failed = 0;
+  for (const o of list) {
+    const db = forOwner(o.id);
+    let profile;
+    if (o.primary) profile = loadProfile();
+    else {
+      const [row] = await db.select('settings', '?select=value&key=eq.jobfit_profile');
+      if (!row?.value) {
+        console.log(`\n${o.label || o.id}: no jobfit_profile in settings, skipped`);
+        continue;
+      }
+      profile = withDefaults(row.value);
+    }
+    console.log(`\n== ${o.label || (o.primary ? 'primary' : o.id)}`);
+    // One person's failure must not cost the other their morning's jobs.
+    try {
+      await runFor(db, profile, o.primary, args);
+    } catch (e) {
+      failed++;
+      console.error(`  ${o.label || o.id}: ${e.message}`);
+    }
+  }
+  if (failed) throw new Error(`${failed} owner(s) failed`);
+}
 
-  let companies = await select(
+async function runFor(db, profile, primary, args) {
+  const min = Number(args.min || 70);
+  const { relevant, exclude } = titleFilters(profile);
+  let finish = async () => {};
+  if (!args['dry-run']) finish = await db.startRun('jobs');
+  try {
+    await pollFor(db, profile, primary, args, min, relevant, exclude, finish);
+  } catch (e) {
+    await finish(false, null, e.message);
+    throw e;
+  }
+}
+
+async function pollFor(db, profile, primary, args, min, relevant, exclude, finish) {
+  let companies = await db.select(
     'companies',
     '?select=slug,name,board_kind,board_token&board_token=not.is.null&board_kind=not.is.null'
   );
@@ -213,7 +284,7 @@ async function main() {
     return;
   }
 
-  const known = await select('jobs', '?select=id,url');
+  const known = await db.select('jobs', '?select=id,url');
   const existing = new Set(known.map((j) => j.id));
   // The aggregator relays postings the board pollers may already hold; the
   // employer URL is the same in both, so it is the dedupe key across sources.
@@ -237,7 +308,7 @@ async function main() {
 
     let kept = 0;
     for (const p of postings) {
-      if (!RELEVANT.test(p.title) || CLEARLY_NOT.test(p.title)) continue;
+      if (!relevant.test(p.title) || exclude.test(p.title)) continue;
       const scored = scoreJob(
         { title: p.title, company: c.name, location: p.location, description: p.description },
         profile
@@ -275,13 +346,15 @@ async function main() {
   // Remote Rocketship: newest twenty across many employers, most of them not on
   // any board we poll. Companies it names that the console has never seen are
   // created minimally so the foreign key holds; logos can follow.
+  // The URL encodes her titles, so anyone else polls it only with their own.
   const newCompanies = new Map();
-  try {
-    const rr = await fetchRemoteRocketship();
+  const rrUrl = profile.remoteRocketshipUrl || (primary ? RR_URL : null);
+  if (rrUrl) try {
+    const rr = await fetchRemoteRocketship(rrUrl);
     let kept = 0;
     let dup = 0;
     for (const p of rr) {
-      if (!RELEVANT.test(p.title) || CLEARLY_NOT.test(p.title)) continue;
+      if (!relevant.test(p.title) || exclude.test(p.title)) continue;
       const urlKey = (p.url || '').replace(/\/+$/, '').toLowerCase();
       const id = `rr:${p.nativeId}`;
       if (urlKey && knownUrls.has(urlKey) && !existing.has(id)) { dup++; continue; }
@@ -341,12 +414,12 @@ async function main() {
   // Companies first, or the jobs insert fails its foreign key. Only slugs the
   // console has never seen are written, so nothing existing is overwritten.
   if (newCompanies.size) {
-    const have = new Set((await select('companies', '?select=slug')).map((c) => c.slug));
+    const have = new Set((await db.select('companies', '?select=slug')).map((c) => c.slug));
     const missing = [...newCompanies.values()].filter((c) => !have.has(c.slug));
-    if (missing.length) await upsert('companies', missing, { onConflict: 'slug' });
+    if (missing.length) await db.upsert('companies', missing, { onConflict: 'owner,slug' });
   }
 
-  const keep = await select('jobs', '?select=id,status,applied_at,notes');
+  const keep = await db.select('jobs', '?select=id,status,applied_at,notes');
   const byId = new Map(keep.map((k) => [k.id, k]));
   for (const r of rows) {
     const prev = byId.get(r.id);
@@ -354,17 +427,17 @@ async function main() {
     r.applied_at = prev?.applied_at ?? null;
     r.notes = prev?.notes ?? null;
   }
-  await upsert('jobs', rows);
+  await db.upsert('jobs', rows, { onConflict: 'owner,id' });
 
   // A board posting that disappeared is closed, not deleted: she may have applied.
   const seen = new Set(rows.map((r) => r.id));
   const stale = keep
     .filter((k) => /^(greenhouse|ashby|lever|teamtailor):/.test(k.id) && !seen.has(k.id))
     .map((k) => ({ id: k.id, closed: true }));
-  if (stale.length) await updateEach('jobs', 'id', stale);
+  if (stale.length) await db.updateEach('jobs', 'id', stale);
 
   if (fresh.length) {
-    await upsert(
+    await db.upsert(
       'notifications',
       fresh.slice(0, 10).map((r) => ({
         kind: 'new_job',
@@ -375,7 +448,7 @@ async function main() {
         entity_ref: r.id,
         dedupe_key: `job:${r.id}`,
       })),
-      { onConflict: 'dedupe_key' }
+      { onConflict: 'owner,dedupe_key' }
     );
   }
 

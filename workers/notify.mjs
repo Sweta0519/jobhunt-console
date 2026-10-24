@@ -14,11 +14,14 @@
 // comments on her posts need partner API access she does not have. Those come
 // from `scripts/linkedin-replies.mjs` on her PC instead.
 
-import { select, upsert, updateEach, startRun, parseArgs } from './lib/db.mjs';
+import { select, upsert, owners, forOwner, startRun, parseArgs } from './lib/db.mjs';
 import { UA, githubToken, graphql, sleep } from './lib/sources.mjs';
 
+// Every row carries its owner: the batch upsert squares the key set, so one
+// row without it would be sent as an explicit null.
+let PRIMARY = null;
 const out = [];
-const add = (n) => out.push(n);
+const add = (n) => out.push({ owner: PRIMARY, ...n });
 
 /** A pull request or issue she opened, or a comment she left on one. */
 async function checkGitHubThread(c, token) {
@@ -171,14 +174,18 @@ async function checkDiscourse(c) {
   return { id: c.id, last_seen_count: count, last_checked_at: new Date().toISOString() };
 }
 
-/** Her own state: nothing external, but it is what actually needs doing. */
-async function checkInternal() {
+/**
+ * One person's own state: nothing external, but it is what actually needs
+ * doing. Posts and the LinkedIn token exist only for the primary owner.
+ */
+async function checkInternal(db, primary) {
+  const add = (n) => out.push({ ...n, owner: db.owner });
   const today = new Date().toISOString().slice(0, 10);
   const [outreach, posts, token, runs] = await Promise.all([
-    select('outreach', '?select=id,person_name,status,followup_due_at&status=in.(sent,accepted)&replied_at=is.null'),
-    select('posts', '?select=id,title,status,post_date,last_error&status=eq.failed'),
-    select('settings', "?select=value&key=eq.linkedin_token_status"),
-    select('runs', '?select=worker,ok,error,finished_at&order=started_at.desc&limit=6'),
+    db.select('outreach', '?select=id,person_name,status,followup_due_at&status=in.(sent,accepted)&replied_at=is.null'),
+    primary ? db.select('posts', '?select=id,title,status,post_date,last_error&status=eq.failed') : [],
+    primary ? db.select('settings', "?select=value&key=eq.linkedin_token_status") : [],
+    db.select('runs', '?select=worker,ok,error,finished_at&order=started_at.desc&limit=6'),
   ]);
 
   for (const o of outreach || []) {
@@ -226,13 +233,15 @@ async function checkInternal() {
   // The publish worker can only post what exists. Better to hear on Sunday that
   // the week is empty than to watch it find nothing four mornings running.
   const horizon = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
-  const upcoming = await select(
-    'posts',
-    `?select=post_date,status&post_date=gte.${today}&post_date=lte.${horizon}&status=in.(draft,approved,rendered)`
-  );
+  const upcoming = primary
+    ? await db.select(
+        'posts',
+        `?select=post_date,status&post_date=gte.${today}&post_date=lte.${horizon}&status=in.(draft,approved,rendered)`
+      )
+    : [];
   const covered = new Set((upcoming || []).map((p) => p.post_date));
   const gaps = [];
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; primary && i < 7; i++) {
     const d = new Date(Date.now() + i * 86_400_000);
     const day = d.getDay();
     if (day === 0 || day === 6) continue; // weekdays only, as the cadence is
@@ -270,8 +279,12 @@ async function main() {
   const args = parseArgs();
   const finish = args['dry-run'] ? async () => {} : await startRun('notify');
   const token = githubToken();
+  const people = await owners();
+  PRIMARY = people.find((o) => o.primary)?.id;
+  if (!PRIMARY) throw new Error('no primary owner in jobhunt.allowed_user');
 
-  const contributions = await select(
+  // Her public work only: the threads are watched as her GitHub login.
+  const contributions = await forOwner(PRIMARY).select(
     'contributions',
     '?select=id,kind,url,source_ref,title,state,last_seen_count,created_at&order=happened_at.desc&limit=100'
   );
@@ -287,17 +300,18 @@ async function main() {
     await sleep(400);
   }
 
-  await checkInternal();
+  for (const o of people) await checkInternal(forOwner(o.id), o.primary);
 
   if (args['dry-run']) {
     console.log(`${out.length} notification(s) would be raised:`);
-    for (const n of out) console.log(`  [${n.severity}] ${n.title}${n.body ? ` — ${n.body.slice(0, 60)}` : ''}`);
+    const label = new Map(people.map((o) => [o.id, o.label || (o.primary ? 'primary' : o.id.slice(0, 8))]));
+    for (const n of out) console.log(`  ${label.get(n.owner)} [${n.severity}] ${n.title}${n.body ? ` — ${n.body.slice(0, 60)}` : ''}`);
     return;
   }
 
-  if (updates.length) await updateEach('contributions', 'id', updates);
-  // The unique index on dedupe_key makes re-running harmless.
-  if (out.length) await upsert('notifications', out, { onConflict: 'dedupe_key' });
+  if (updates.length) await forOwner(PRIMARY).updateEach('contributions', 'id', updates);
+  // The unique index on (owner, dedupe_key) makes re-running harmless.
+  if (out.length) await upsert('notifications', out, { onConflict: 'owner,dedupe_key' });
 
   const unread = await select('notifications', '?select=id&read_at=is.null');
   await finish(true, { raised: out.length, unread: unread?.length ?? 0, watched: updates.length });

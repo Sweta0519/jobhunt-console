@@ -83,7 +83,11 @@ async function main() {
     `?select=slug,name,domain,logo_path,logo_checked_at&order=is_target.desc,slug.asc${filter}`
   );
   // A company with a known domain is worth trying even without a live row.
-  const rows = (all || []).filter((c) => wanted.has(c.slug) || c.domain);
+  // Each owner has their own row per company; a logo is the same for both, so
+  // fetch it once and let the slug-keyed update below reach every owner's row.
+  const bySlug = new Map();
+  for (const c of all || []) if (!bySlug.has(c.slug)) bySlug.set(c.slug, c);
+  const rows = [...bySlug.values()].filter((c) => wanted.has(c.slug) || c.domain);
 
   let done = 0;
   let missed = 0;

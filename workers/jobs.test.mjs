@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RELEVANT, CLEARLY_NOT } from './jobs.mjs';
+import { RELEVANT, CLEARLY_NOT, titleFilters, withDefaults } from './jobs.mjs';
 
 const keeps = (title) => RELEVANT.test(title) && !CLEARLY_NOT.test(title);
 
@@ -51,4 +51,27 @@ test('drops the obvious non-matches', () => {
   ]) {
     assert.equal(keeps(title), false, `should drop: ${title}`);
   }
+});
+
+test('a profile without titles keeps her filters', () => {
+  const f = titleFilters({});
+  assert.equal(f.relevant, RELEVANT);
+  assert.equal(f.exclude, CLEARLY_NOT);
+});
+
+test("another field's titles replace hers, both ways", () => {
+  // Her CLEARLY_NOT drops "software engineer", exactly what a developer wants.
+  const f = titleFilters({ titles: { relevant: 'software engineer|developer', exclude: 'intern|sales' } });
+  assert.equal(f.relevant.test('Senior Software Engineer'), true);
+  assert.equal(f.exclude.test('Senior Software Engineer'), false);
+  assert.equal(f.relevant.test('Technical Support Engineer'), false);
+});
+
+test("a stored profile does not inherit her support skills", () => {
+  const p = withDefaults({ roles: ['data analyst'], skills: { core: ['sql', 'tableau'] } });
+  assert.deepEqual(Object.keys(p.skills), ['core']);
+  assert.deepEqual(p.roles, ['data analyst']);
+  // Unset sections still come from the defaults, so scoring never meets undefined.
+  assert.ok(Array.isArray(p.rolePenalties));
+  assert.ok(p.locations.remoteRegions.length > 0);
 });

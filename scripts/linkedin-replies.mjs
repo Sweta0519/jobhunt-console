@@ -14,7 +14,12 @@
 // prompt for her to look, not a state change.
 
 import { createRequire } from 'node:module';
-import { select, upsert, parseArgs } from '../workers/lib/db.mjs';
+import { primaryOwner, forOwner, parseArgs } from '../workers/lib/db.mjs';
+
+// Her signed-in LinkedIn, so only her conversations. The service role sees
+// everyone's outreach; without the scope another person's contacts would be
+// looked up in her inbox.
+const { select, upsert } = forOwner((await primaryOwner()).id);
 
 const require = createRequire(import.meta.url);
 const CDP = 'http://127.0.0.1:9224';
@@ -107,7 +112,7 @@ async function main() {
     console.log(`${notes.length} notification(s) would be raised`);
     return;
   }
-  await upsert('notifications', notes, { onConflict: 'dedupe_key' });
+  await upsert('notifications', notes, { onConflict: 'owner,dedupe_key' });
   console.log(`\n${notes.length} notification(s) raised`);
 }
 

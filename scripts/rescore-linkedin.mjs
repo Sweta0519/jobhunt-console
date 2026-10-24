@@ -11,12 +11,14 @@
 //
 // Default: rows never scored. --all: every open linkedin-export row.
 
-import { select, updateEach, parseArgs } from '../workers/lib/db.mjs';
+import { primaryOwner, forOwner, parseArgs } from '../workers/lib/db.mjs';
 import { detectGerman } from '../workers/lib/jobfit/jobfit.mjs';
 import { eligibleFrom } from '../workers/jobs.mjs';
 
 const PORT = 9224;
 const args = parseArgs();
+// Her LinkedIn session and her imported rows only.
+const { select, updateEach } = forOwner((await primaryOwner()).id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const rows = await select(

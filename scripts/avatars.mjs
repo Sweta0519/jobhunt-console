@@ -16,7 +16,10 @@
 // initials monogram when it has not run.
 
 import { createRequire } from 'node:module';
-import { select, updateEach, parseArgs } from '../workers/lib/db.mjs';
+import { primaryOwner, forOwner, parseArgs } from '../workers/lib/db.mjs';
+
+// Her LinkedIn session, her contacts only.
+const { select, updateEach } = forOwner((await primaryOwner()).id);
 
 const require = createRequire(import.meta.url);
 const CHROME_CDP = 'http://127.0.0.1:9224';

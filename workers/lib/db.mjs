@@ -109,12 +109,12 @@ export async function patch(table, query, body) {
  * before ON CONFLICT can turn it into an update, so a partial upsert fails on
  * any NOT NULL column the payload omits.
  */
-export async function updateEach(table, keyColumn, rows) {
+export async function updateEach(table, keyColumn, rows, filter = '') {
   let n = 0;
   for (const row of rows) {
     const { [keyColumn]: key, ...fields } = row;
     if (key === undefined || !Object.keys(fields).length) continue;
-    await patch(table, `?${keyColumn}=eq.${encodeURIComponent(key)}`, fields);
+    await patch(table, `?${keyColumn}=eq.${encodeURIComponent(key)}${filter ? `&${filter}` : ''}`, fields);
     n++;
   }
   return n;
@@ -130,11 +130,14 @@ export async function setSecret(key, value) {
   await upsert('secrets', [{ key, value, updated_at: new Date().toISOString() }], { onConflict: 'key' });
 }
 
-/** Record a worker run. Returns a finish(ok, summary, error) callback. */
-export async function startRun(worker) {
+/**
+ * Record a worker run. Returns a finish(ok, summary, error) callback.
+ * Without an owner the row defaults to the primary owner.
+ */
+export async function startRun(worker, owner) {
   const started_at = new Date().toISOString();
   const [row] = (await request('POST', 'runs', {
-    body: [{ worker, started_at }],
+    body: [{ worker, started_at, ...(owner ? { owner } : {}) }],
     headers: { Prefer: 'return=representation' },
   })) || [];
   return async (ok, summary, error) => {
@@ -145,6 +148,40 @@ export async function startRun(worker) {
       summary: summary ?? null,
       error: error ? String(error).slice(0, 2000) : null,
     });
+  };
+}
+
+/**
+ * Everyone allowed into the console, primary owner first. The primary owner is
+ * the one whose posts, questions and LinkedIn token the single-user workers
+ * serve; everyone else has the job-hunt half only.
+ */
+export async function owners() {
+  const rows = await select('allowed_user', '?select=user_id,is_primary,label&order=is_primary.desc');
+  return (rows || []).map((r) => ({ id: r.user_id, primary: !!r.is_primary, label: r.label || null }));
+}
+
+export async function primaryOwner() {
+  const p = (await owners()).find((o) => o.primary);
+  if (!p) throw new Error('no primary owner in jobhunt.allowed_user');
+  return p;
+}
+
+/**
+ * The same helpers, confined to one owner's rows. The service role bypasses
+ * row level security, so without this a worker would read and write everyone's
+ * rows at once: a same-id job or person of the other owner included.
+ */
+export function forOwner(owner) {
+  const filter = `owner=eq.${owner}`;
+  const scope = (query = '') => (query ? `?${filter}&${query.replace(/^\?/, '')}` : `?${filter}`);
+  return {
+    owner,
+    select: (table, query) => select(table, scope(query)),
+    upsert: (table, rows, opts) => upsert(table, (rows || []).map((r) => ({ ...r, owner })), opts),
+    patch: (table, query, body) => patch(table, scope(query), body),
+    updateEach: (table, keyColumn, rows) => updateEach(table, keyColumn, rows, filter),
+    startRun: (worker) => startRun(worker, owner),
   };
 }
 

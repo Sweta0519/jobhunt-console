@@ -49,11 +49,17 @@ export default async function Settings({
   const sp = await searchParams
   const { supabase, user } = await requireOwner()
 
+  // LinkedIn publishing, questions and posts are the primary owner's alone.
+  const { data: primary } = await supabase.rpc('is_primary')
+  const tables = primary
+    ? (['jobs', 'questions', 'outreach', 'posts', 'people', 'contributions'] as const)
+    : (['jobs', 'outreach', 'people'] as const)
+
   const [runs, token, counts] = await Promise.all([
     supabase.from('runs').select('*').order('started_at', { ascending: false }).limit(12),
     supabase.from('settings').select('value').eq('key', 'linkedin_token_status').maybeSingle(),
     Promise.all(
-      (['jobs', 'questions', 'outreach', 'posts', 'people', 'contributions'] as const).map(
+      tables.map(
         async (t) => {
           const { count } = await supabase.from(t).select('*', { count: 'exact', head: true })
           return [t, count ?? 0] as const
@@ -73,7 +79,7 @@ export default async function Settings({
         <h1>Settings</h1>
         <p className="sub">Signed in as {user.email}</p>
 
-        <Section title="LinkedIn access">
+        {primary && <Section title="LinkedIn access">
           {sp.linkedin && (
             <div className={sp.linkedin === 'connected' ? 'card' : 'notice'}>
               <p style={{ margin: 0 }}>{MESSAGES[sp.linkedin] || 'Something went wrong.'}</p>
@@ -95,7 +101,7 @@ export default async function Settings({
               {days === null ? 'Connect LinkedIn' : 'Reconnect LinkedIn'}
             </a>
           </div>
-        </Section>
+        </Section>}
 
         <Section title="Scheduled jobs" hint="These run in GitHub Actions, with your laptop closed.">
           {rows.length === 0 ? (

@@ -3,6 +3,12 @@
 //
 //   node scripts/import.mjs --dry-run            transform only, write out/import-preview.json
 //   node scripts/import.mjs                      transform and upsert
+//   node scripts/import.mjs --owner <label> --jobnet-dir <dir>
+//                                                another person's jobnet data, into their rows
+//
+// Without --owner the rows are hers (the primary owner). Anyone else gets the
+// job-hunt half only: companies, people, jobs, outreach. Posts and questions
+// are never read for them.
 //
 // Reads (an allowlist — nothing else is opened):
 //   ~/.linkedin-jobnet/data.json      jobs, people, connections, companies
@@ -17,7 +23,7 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { upsert, select, parseArgs } from '../workers/lib/db.mjs';
+import { owners, forOwner, parseArgs } from '../workers/lib/db.mjs';
 
 const HOME = homedir();
 const SRC = {
@@ -274,12 +280,22 @@ export function transform({ jobnet, queue, posts, questions }) {
 
 async function main() {
   const args = parseArgs();
+  const list = await owners();
+  const owner = args.owner
+    ? list.find((o) => o.id === args.owner || o.label === args.owner)
+    : list.find((o) => o.primary);
+  if (!owner) throw new Error(args.owner ? `no allowed user "${args.owner}"` : 'no primary owner');
+  const db = forOwner(owner.id);
+  const dir = args['jobnet-dir'];
+  if (!owner.primary && !dir) throw new Error('--jobnet-dir is required for anyone but the primary owner');
+
   const data = transform({
-    jobnet: readJson(SRC.jobnet),
-    queue: readJson(SRC.queue),
-    posts: readJson(SRC.posts),
-    questions: readJson(SRC.questions),
+    jobnet: readJson(dir ? join(dir, 'data.json') : SRC.jobnet),
+    queue: readJson(dir ? join(dir, 'queue.json') : SRC.queue),
+    posts: owner.primary ? readJson(SRC.posts) : null,
+    questions: owner.primary ? readJson(SRC.questions) : null,
   });
+  console.log(`owner: ${owner.label || (owner.primary ? 'primary' : owner.id)}`);
 
   const counts = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v.length]));
   console.log('transformed:', JSON.stringify(counts));
@@ -302,7 +318,8 @@ async function main() {
   };
 
   for (const [table, fields] of Object.entries(PROTECTED)) {
-    const existing = await select(table, `?select=id,${fields.join(',')}`);
+    if (!data[table].length) continue;
+    const existing = await db.select(table, `?select=id,${fields.join(',')}`);
     if (!existing?.length) continue;
     const byId = new Map(existing.map((r) => [r.id, r]));
     let kept = 0;
@@ -317,9 +334,18 @@ async function main() {
 
   // Order matters: companies and people are referenced by foreign keys.
   // Each table's conflict target is its primary key, which is not always `id`.
-  const CONFLICT = { companies: 'slug', contributions: 'url' };
+  // The job-hunt tables key on (owner, ...) since 0012; posts, questions and
+  // contributions are hers alone and kept their single-column keys.
+  const CONFLICT = {
+    companies: 'owner,slug',
+    people: 'owner,id',
+    jobs: 'owner,id',
+    outreach: 'owner,id',
+    contributions: 'url',
+  };
   for (const table of ['companies', 'people', 'jobs', 'outreach', 'posts', 'questions', 'contributions']) {
-    const n = await upsert(table, data[table], { onConflict: CONFLICT[table] || 'id' });
+    if (!data[table].length) continue;
+    const n = await db.upsert(table, data[table], { onConflict: CONFLICT[table] || 'id' });
     console.log(`${table}: ${n} row(s)`);
   }
 }
