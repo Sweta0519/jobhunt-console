@@ -7,8 +7,15 @@
 // straight from the browser would tell that service, on every page view, which
 // companies she is tracking. Fetching server-side once leaks nothing.
 
+import { createHash } from 'node:crypto';
 import { select, updateEach, startRun, parseArgs } from './lib/db.mjs';
 import { UA, sleep } from './lib/sources.mjs';
+
+// The icon service answers an unknown domain with the same generic image
+// (1150 bytes), and three unrelated companies were showing it as their logo.
+// A miss is better: the console draws a monogram instead.
+const PLACEHOLDERS = new Set(['84572f2157']);
+const isPlaceholder = (buf) => PLACEHOLDERS.has(createHash('sha1').update(buf).digest('hex').slice(0, 10));
 
 const BUCKET = 'logos';
 
@@ -37,6 +44,7 @@ async function fetchIcon(domain) {
       const buf = Buffer.from(await r.arrayBuffer());
       // Anything tiny is a 1px tracker or an error page served as an image.
       if (buf.length < 100 || buf.length > 250_000) continue;
+      if (isPlaceholder(buf)) continue;
       return { buf, type: type.split(';')[0].trim() };
     } catch {
       /* try the next source */
@@ -68,11 +76,14 @@ async function main() {
 
   // Only companies she actually looks at. Her data carries hundreds of
   // agencies and job boards that will never appear on a screen.
-  const [jobs, questions, outreach] = await Promise.all([
+  const [jobs, questions, outreach, open] = await Promise.all([
     select('jobs', '?select=company_slug&closed=eq.false&company_slug=not.is.null'),
     select('questions', '?select=company_slug&company_slug=not.is.null'),
     select('outreach', '?select=company_slug&company_slug=not.is.null'),
+    // What the Jobs tab actually shows: eligible, open roles.
+    select('jobs', '?select=company_slug&closed=eq.false&eligible=is.true&company_slug=not.is.null'),
   ]);
+  const onScreen = new Set((open || []).map((r) => r.company_slug));
   const wanted = new Set(
     [...(jobs || []), ...(questions || []), ...(outreach || [])].map((r) => r.company_slug)
   );
@@ -87,7 +98,15 @@ async function main() {
   // fetch it once and let the slug-keyed update below reach every owner's row.
   const bySlug = new Map();
   for (const c of all || []) if (!bySlug.has(c.slug)) bySlug.set(c.slug, c);
-  const rows = [...bySlug.values()].filter((c) => wanted.has(c.slug) || c.domain);
+  // A miss is remembered for a month. Retrying every miss every run spent the
+  // whole limit on the same recruiters each morning, so companies on the Jobs
+  // tab were never reached and showed initials.
+  const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const tier = (c) => (onScreen.has(c.slug) ? 2 : wanted.has(c.slug) ? 1 : 0);
+  const rows = [...bySlug.values()]
+    .filter((c) => wanted.has(c.slug) || c.domain)
+    .filter((c) => args.retry || !c.logo_checked_at || c.logo_checked_at < monthAgo)
+    .sort((a, b) => tier(b) - tier(a));
 
   let done = 0;
   let missed = 0;
