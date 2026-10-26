@@ -159,6 +159,37 @@ export const posters = {
     `, ctx);
   },
 
+  // calmer table with tool logos: columns [4 headers], rows [{ label, emoji?, have, add, tools: [{ name, icon? }] }]
+  // icon is a Simple Icons slug drawn in its brand colour, or a full URL for logos Simple Icons dropped
+  // (Salesforce, Slack, AWS); a tool without one renders as a text chip
+  skills: (c, ctx) => {
+    const cols = c.columns || ['Skill area', 'You already do this', 'Add this', 'Tools'];
+    const src = (i) => (/^https:\/\//.test(i) ? esc(i) : `https://cdn.simpleicons.org/${encodeURIComponent(i)}`);
+    const chip = (t) => `<span class="tchip">${t.icon ? `<img src="${src(t.icon)}" alt="">` : ''}${esc(t.name)}</span>`;
+    return posterShell(`
+      <style>
+        .sk { background:#fff; border-radius:24px; box-shadow:0 8px 28px ${THEME.shadow}; border:1px solid #DCE7EA; overflow:hidden; }
+        .sk-row { display:grid; grid-template-columns:200px 1fr 1fr 1.15fr; align-items:center; }
+        .sk-row > div { padding:16px 18px; font-size:22px; line-height:1.35; color:#1F2937; }
+        .sk-row + .sk-row { border-top:1px solid #E5EDEF; }
+        .sk-head { background:#0F3D44; }
+        .sk-head > div { color:#fff; font-weight:700; font-size:21px; letter-spacing:.3px; text-transform:uppercase; padding:18px; }
+        .sk-head > div:nth-child(3) { color:#FCD9A8; }
+        .sk-lab { font-weight:700; color:${THEME.text}; display:flex; align-items:center; gap:10px; }
+        .sk-add { color:#7C2D12; }
+        .sk-row:not(.sk-head):nth-child(odd) { background:#F7FBFB; }
+        .tchip { display:inline-flex; align-items:center; gap:7px; background:#fff; border:1px solid #D6E2E5; border-radius:10px; padding:5px 10px; margin:3px 6px 3px 0; font-size:19px; font-weight:600; color:#0F2A3A; }
+        .tchip img { width:22px; height:22px; }
+      </style>
+      <h1>${title(c.title)}</h1>${c.subtitle ? `<div class="sub">${label(c.subtitle)}</div>` : ''}
+      <div class="sk">
+        <div class="sk-row sk-head">${cols.map((h) => `<div>${esc(h)}</div>`).join('')}</div>
+        ${(c.rows || []).map((r) => `<div class="sk-row"><div class="sk-lab">${r.emoji ? `<span class="emoji" style="font-size:24px">${esc(r.emoji)}</span>` : ''}${esc(r.label)}</div><div>${label(r.have)}</div><div class="sk-add">${label(r.add)}</div><div>${(r.tools || []).map(chip).join('')}</div></div>`).join('')}
+      </div>
+      ${c.footer ? `<div class="foot">${label(c.footer)}</div>` : ''}
+    `, ctx);
+  },
+
   // vertical progression: levels [{ title, lines[], side: { title, items[] }, emoji }] rendered top = highest when reverse
   map: (c, ctx) => posterShell(`
       <h1>${title(c.title)}</h1>${c.subtitle ? `<div class="sub">${label(c.subtitle)}</div>` : ''}
