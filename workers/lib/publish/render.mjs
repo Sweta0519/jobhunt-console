@@ -25,11 +25,78 @@ export function htmlFor(item, cfg) {
   return [];
 }
 
+// Remote <img> are inlined as data URIs in Node: the runner's datacenter IP is blocked by cdn.simpleicons.org, jsdelivr is not.
+const SI_HOST = 'cdn.simpleicons.org';
+const SI_FETCH_HOST = process.env.SIMPLEICONS_HOST || SI_HOST; // override to test the fallback
+const SI_VER = 14; // v14 still ships _data/simple-icons.json (v15+ moved it to data/)
+const iconCache = new Map(); // url -> data URI | null
+let siData = null; // slug -> hex
+
+async function fetchRetry(url, tries = 2) {
+  let err;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r;
+    } catch (e) { err = e; }
+  }
+  throw err;
+}
+
+const titleToSlug = (t) => t.toLowerCase().replace(/\+/g, 'plus').replace(/\./g, 'dot').replace(/&/g, 'and')
+  .replace(/đ/g, 'd').replace(/ħ/g, 'h').replace(/ı/g, 'i').replace(/ĸ/g, 'k').replace(/ŀ/g, 'l').replace(/ł/g, 'l').replace(/ß/g, 'ss').replace(/ŧ/g, 't')
+  .normalize('NFD').replace(/[^a-z0-9]/g, '');
+
+async function brandHex(slug) {
+  if (!siData) {
+    const list = await (await fetchRetry(`https://cdn.jsdelivr.net/npm/simple-icons@${SI_VER}/_data/simple-icons.json`)).json();
+    siData = new Map(list.map((e) => [e.slug || titleToSlug(e.title), e.hex]));
+  }
+  return siData.get(slug);
+}
+
+async function loadIcon(url) {
+  if (iconCache.has(url)) return iconCache.get(url);
+  let out = null;
+  try {
+    const r = await fetchRetry(url.replace(`https://${SI_HOST}/`, `https://${SI_FETCH_HOST}/`));
+    out = `data:${(r.headers.get('content-type') || 'image/svg+xml').split(';')[0]};base64,${Buffer.from(await r.arrayBuffer()).toString('base64')}`;
+  } catch (e) {
+    const m = url.startsWith(`https://${SI_HOST}/`) && url.slice(SI_HOST.length + 9).match(/^([^/?#]+)/);
+    if (m) { // simpleicons unreachable: monochrome svg from jsdelivr + brand colour
+      try {
+        const slug = decodeURIComponent(m[1]);
+        let svg = await (await fetchRetry(`https://cdn.jsdelivr.net/npm/simple-icons@${SI_VER}/icons/${slug}.svg`)).text();
+        const hex = await brandHex(slug).catch(() => null);
+        if (hex) svg = svg.replace('<svg ', `<svg fill="#${hex}" `);
+        out = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+      } catch (e2) { console.warn(`  warning: icon ${url} unavailable (${e.message}; fallback: ${e2.message})`); }
+    } else console.warn(`  warning: image ${url} unavailable (${e.message})`);
+  }
+  iconCache.set(url, out);
+  return out;
+}
+
+// Replaces remote <img src="https://..."> with data URIs; images that cannot be fetched are dropped (chip keeps its text).
+export async function inlineImages(html) {
+  const re = /<img\b[^>]*?\bsrc="(https?:\/\/[^"]+)"[^>]*>/g;
+  const urls = [...new Set([...html.matchAll(re)].map((m) => m[1].replace(/&amp;/g, '&')))];
+  await Promise.all(urls.map(loadIcon));
+  return html.replace(re, (tag, src) => {
+    const d = iconCache.get(src.replace(/&amp;/g, '&'));
+    return d ? tag.replace(src, d) : '';
+  });
+}
+
 async function shoot(page, html, path, size) {
   const height = size === '1x1' ? 1080 : size === 'poster' ? 1246 : 1350;
   await page.setViewportSize({ width: 1080, height });
-  await page.setContent(html, { waitUntil: 'networkidle' });
+  await page.setContent(await inlineImages(html), { waitUntil: 'networkidle' });
   await page.evaluate(() => document.fonts.ready);
+  // a broken image must fail the post, not get published
+  const broken = await page.evaluate(() => [...document.images].filter((i) => !i.complete || i.naturalWidth === 0).map((i) => i.src.slice(0, 80)));
+  if (broken.length) throw new Error(`${broken.length} image(s) failed to load: ${broken.join(', ')}`);
   const ok = await page.evaluate(() => document.fonts.check('700 40px "Plus Jakarta Sans"') && document.fonts.check('400 34px Inter'));
   // Auto-fit: measure the content's natural height once. Overflow -> scale down so the footer lands at the bottom.
   // Lots of spare room (posters) -> scale up to fill the canvas, capped at 1.3x (Chrome zoom keeps proportions).
