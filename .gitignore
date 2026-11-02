@@ -13,3 +13,10 @@ out/
 *.tsbuildinfo
 
 graphify-out/
+
+# Personal CV source and parsed copies: this repository is public.
+resume-source*.html
+master-cv*.json
+
+# Supabase CLI scratch
+supabase/.temp/

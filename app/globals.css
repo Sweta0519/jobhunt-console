@@ -293,3 +293,9 @@ kbd {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
 }
+
+/* ---- resume drafts ---- */
+.resume-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; margin-top: 8px; }
+@media (max-width: 680px) { .resume-grid { grid-template-columns: 1fr; } }
+mark.diff-add { background: var(--wait-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+mark.diff-flag { background: var(--fail-soft); color: var(--fail); border-radius: 3px; padding: 0 2px; }

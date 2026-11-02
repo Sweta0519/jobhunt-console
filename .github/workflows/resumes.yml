@@ -1,0 +1,81 @@
+name: resumes
+
+# Drafts tailored CVs for her review. It never sends or submits anything.
+#
+# This repository and its logs are public. Nothing here may print CV text,
+# draft text or Claude's output: the worker replaces console.* and logs only
+# job ids and counts. Never add upload-artifact, tee, a pull_request trigger
+# or --debug to this file. workers/resumes.workflow.test.mjs enforces this.
+#
+# Fired by pg_cron (migration 0013). The schedule below is GitHub's best-effort
+# second chance; the worker is idempotent and the daily cap lives in the database.
+
+on:
+  schedule:
+    - cron: '40 7 * * *'
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'One job id to draft (blank = the normal queue)'
+        default: ''
+      dry_run:
+        description: 'Call Claude and validate, write nothing'
+        type: boolean
+        default: false
+
+concurrency:
+  group: resumes
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No npm ci: the worker uses only Node built-ins, so no installed package
+      # ever runs beside the secrets below.
+
+      - name: Sync the queue
+        id: plan
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID: ${{ inputs.job }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node workers/resumes.mjs --plan
+
+      - name: Install Claude Code (pinned, verified)
+        if: steps.plan.outputs.todo != '0'
+        env:
+          CC_VERSION: '2.1.316'
+          CC_SHA512: 'RQDM6N285IjNKcmlPRriayNzpTkEJreAw5/vBU+V0R3qljkQ5z6/pSbzcVUAXvasoOlvub0RIma3NWvSuZA8Cg=='
+        run: |
+          mkdir -p "$RUNNER_TEMP/cc"
+          cd "$RUNNER_TEMP/cc"
+          curl -fsSL -o cc.tgz "https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-${CC_VERSION}.tgz"
+          test "$(openssl dgst -sha512 -binary cc.tgz | base64 -w0)" = "$CC_SHA512"
+          tar xzf cc.tgz package/claude
+          chmod +x package/claude
+          rm cc.tgz
+          package/claude --version
+
+      - name: Draft
+        if: steps.plan.outputs.todo != '0'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          JOB_ID: ${{ inputs.job }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node workers/resumes.mjs --claude-bin "$RUNNER_TEMP/cc/package/claude"

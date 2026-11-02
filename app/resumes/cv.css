@@ -1,0 +1,32 @@
+/* The CV, scoped under .cv. Explicit colours so dark mode cannot touch it. */
+@page { size: A4; margin: 0; } /* zero margin leaves browsers no room for URL and date headers */
+
+.cv-stage { background: #fff; min-height: 100vh; padding: 16px 0 40px; }
+.cv { font-size: 9.8pt; line-height: 1.22; color: #111; background: #fff; font-variant-ligatures: none; font-feature-settings: "liga" 0, "clig" 0; }
+.cv-page { width: 100%; border-collapse: collapse; }
+.cv-page thead td { height: 11mm; padding: 0; }   /* repeats on every printed page */
+.cv-page tfoot td { height: 9mm; padding: 0; }
+.cv-page tbody td { padding: 0 14mm; vertical-align: top; }
+
+.cv a { color: #111; text-decoration: none; border-bottom: 1px solid #999; }
+.cv h1 { font-size: 20pt; line-height: 1.1; margin: 0 0 2px; font-weight: 700; letter-spacing: 0; color: #111; }
+.cv .cv-tagline { font-size: 10.5pt; margin: 0 0 3px; }
+.cv .cv-contact { font-size: 9pt; margin: 0 0 6px; }
+.cv .cv-sep { margin: 0 6px; color: #777; }
+.cv h2 { font-size: 10pt; text-transform: uppercase; letter-spacing: 0.06em; margin: 9px 0 3px; padding-bottom: 1px; border-bottom: 1px solid #111; font-weight: 700; color: #111; }
+.cv p { margin: 0 0 3px; }
+.cv ul { margin: 2px 0 4px; padding-left: 15px; }
+.cv li { margin: 0 0 1.5px; }
+.cv .cv-role { margin-bottom: 4px; break-inside: avoid; }
+.cv .cv-role-head { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; }
+.cv .cv-meta { font-style: italic; color: #333; }
+.cv .cv-skills b { font-weight: 700; }
+
+@media print {
+  .no-print { display: none !important; }
+  html, body { background: #fff !important; }
+  .cv-stage { padding: 0; min-height: 0; }
+}
+@media screen {
+  .cv-sheet { max-width: 210mm; margin: 0 auto; box-shadow: var(--shadow-hover); }
+}

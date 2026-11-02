@@ -34,6 +34,17 @@ export function StatusBadge({ status }: { status: string }) {
     new: { tone: 'wait', glyph: '●', label: 'Open' },
     shortlisted: { tone: 'wait', glyph: '★', label: 'Shortlisted' },
 
+    // resume drafts: queued and drafting are the worker's, draft_ready is hers to read
+    queued: { tone: 'wait', glyph: '◷', label: 'Queued' },
+    drafting: { tone: 'wait', glyph: '◷', label: 'Drafting' },
+    draft_ready: { tone: 'wait', glyph: '✎', label: 'Draft ready' },
+    discarded: { tone: 'inert', glyph: '–', label: 'Discarded' },
+
+    // how well her CV covers one requirement of a posting
+    req_met: { tone: 'inert', glyph: '✓', label: 'Covered' },
+    req_partial: { tone: 'wait', glyph: '◷', label: 'Partly' },
+    req_gap: { tone: 'fail', glyph: '▲', label: 'Gap' },
+
     failed: { tone: 'fail', glyph: '▲', label: 'Failed' },
 
     skipped: { tone: 'inert', glyph: '–', label: 'Skipped' },
@@ -115,6 +126,7 @@ export async function NavBar({ current, waiting }: { current: string; waiting: n
     { href: '/approvals', label: 'Approvals' },
     { href: '/questions', label: 'Questions', primaryOnly: true },
     { href: '/jobs', label: 'Jobs' },
+    { href: '/resumes', label: 'Resumes', primaryOnly: true },
     { href: '/outreach', label: 'Outreach' },
     { href: '/posts', label: 'Posts', primaryOnly: true },
     { href: '/companies', label: 'Companies' },
@@ -127,6 +139,7 @@ export async function NavBar({ current, waiting }: { current: string; waiting: n
     { href: '/', label: 'Today' },
     { href: '/approvals', label: 'Approvals', count: waiting },
     { href: '/jobs', label: 'Jobs' },
+    ...(primary ? [{ href: '/resumes', label: 'Resumes' }] : []),
     { href: '/record', label: 'Record' },
   ]
   return (

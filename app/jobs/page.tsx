@@ -3,6 +3,7 @@ import { outcomeLine, type Job } from '../lib/queries'
 import { jobPrompt } from '../lib/prompts'
 import { NavBar, Section, Empty, StatusBadge, ExternalLink, formatDay } from '../components/ui'
 import { ActionButton, CopyButton } from '../components/ActionButton'
+import Link from 'next/link'
 import { Logo } from '../components/Logo'
 import { FilterBar } from '../components/Interactive'
 import { setJobStatus } from '../actions'
@@ -28,11 +29,14 @@ export default async function Jobs({
   // most here often have no score at all (imported from the inbox, or added
   // by hand), and a score-ordered page limit silently dropped every one.
   const APPLIED = ['applied', 'shortlisted', 'interview', 'rejected']
-  const [{ data: scored }, { data: apps }, { data: cos }] = await Promise.all([
+  const [{ data: scored }, { data: apps }, { data: cos }, { data: drafts }] = await Promise.all([
     supabase.from('jobs').select('*').not('status', 'in', `(${APPLIED.join(',')})`).order('score', { ascending: false, nullsFirst: false }).limit(400),
     supabase.from('jobs').select('*').in('status', APPLIED),
     supabase.from('companies').select('slug,name,logo_path'),
+    // Row level security returns nothing for anyone but her.
+    supabase.from('resume_drafts').select('id,job_id,status').in('status', ['draft', 'approved']),
   ])
+  const draftOf = new Map((drafts || []).map((d) => [d.job_id as string, d as { id: string; status: string }]))
   const all = [...((scored as Job[]) || []), ...((apps as Job[]) || [])]
   const logos = new Map((cos || []).map((c) => [c.slug, c.logo_path as string | null]))
 
@@ -155,6 +159,11 @@ export default async function Jobs({
                 </div>
                 <div className="row" style={{ marginTop: 8 }}>
                   <StatusBadge status={j.status} />
+                  {draftOf.get(j.id) && (
+                    <Link href={`/resumes/${draftOf.get(j.id)!.id}`}>
+                      <StatusBadge status={draftOf.get(j.id)!.status === 'draft' ? 'draft_ready' : 'approved'} />
+                    </Link>
+                  )}
                   {j.german_required && <span className="chip">German required</span>}
                   {j.closed && j.status !== 'rejected' && <span className="chip">closed</span>}
                   {outcomeLine(j) && <span className="card-meta">{outcomeLine(j)}</span>}

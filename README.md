@@ -169,6 +169,37 @@ she is looking at that profile anyway, and `--prune` deletes a photo once the
 conversation is skipped or closed. Everything falls back to an initials
 monogram, so nothing is ever a broken image.
 
+## Resume drafts
+
+For each new role that scores 70 or more, `workers/resumes.mjs` drafts a tailored
+resume from the master CV, for her to read, edit and save as a PDF. Nothing is
+sent or submitted anywhere.
+
+- **Runs** in `.github/workflows/resumes.yml`, started by pg_cron (migration
+  0013) at 06:10 and 13:10 UTC, with a GitHub schedule as a second chance. A
+  read-only token, no `npm ci`, and a pinned, checksum-verified Claude Code
+  binary. It signs in with `CLAUDE_CODE_OAUTH_TOKEN` (made with
+  `claude setup-token`, valid one year, a `resume_auth` bell appears when it
+  stops working).
+- **Claude has no tools** and answers in JSON with ids. Employers, titles, dates
+  and contact details are copied from the master, never written by the model.
+  Name and contact row are not sent at all.
+- **Limits**: at most 5 drafts a day (`settings.resume_config.daily_cap`), and it
+  stops at 85% usage, on overage, or at a usage limit (the rest stay queued).
+  `resume_config.enabled = false` is the kill switch; no config means no work.
+- **Logs are public**, so the worker prints job ids and counts only. A test
+  runs the whole pipeline with canary strings and fails if one reaches the log.
+- **Hers only**: the master CV, the posting text and the drafts have row level
+  security for the primary owner. The second user sees nothing and the token
+  never drafts for them.
+- **Master CV** lives outside the repo. `node scripts/seed-master-cv.mjs --file
+  "<path>" --dry-run` shows what would be stored; without `--dry-run` it stores
+  the next version. `node scripts/check-no-cv-leak.mjs --file "<path>"` counts
+  CV strings in tracked files, or in a downloaded run log with `--log`.
+- **PDF**: the review page opens `/resumes/<id>/print`, a print stylesheet in
+  Carlito (same metrics as Calibri); the browser saves the PDF. Nothing is
+  stored.
+
 ## Checks
 
 ```bash

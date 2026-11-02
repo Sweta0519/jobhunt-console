@@ -15,9 +15,12 @@
 // Germany-remote support role she interviewed for.
 
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
 import { owners, forOwner, parseArgs } from './lib/db.mjs';
 import { UA, sleep } from './lib/sources.mjs';
 import { DEFAULT_PROFILE, loadProfile, scoreJob } from './lib/jobfit/jobfit.mjs';
+import { cleanText, leverFullText } from './lib/resume/text.mjs';
+import { resolveFull } from './lib/resume/resolve.mjs';
 
 /**
  * Titles worth scoring at all. Everything else on a 600-job board is noise.
@@ -65,6 +68,7 @@ export const BOARDS = {
       url: x.absolute_url,
       location: x.location?.name || '',
       description: strip(x.content),
+      fullText: cleanText(x.content),
       postedAt: x.updated_at || x.first_published || null,
     }));
   },
@@ -76,6 +80,7 @@ export const BOARDS = {
       url: x.jobUrl,
       location: [x.location, x.isRemote ? 'Remote' : ''].filter(Boolean).join(' '),
       description: strip(x.descriptionHtml || x.descriptionPlain),
+      fullText: cleanText(x.descriptionHtml || x.descriptionPlain),
       postedAt: x.publishedAt || null,
     }));
   },
@@ -87,6 +92,7 @@ export const BOARDS = {
       url: x.hostedUrl,
       location: x.categories?.location || '',
       description: strip(x.descriptionPlain || x.description),
+      fullText: leverFullText(x),
       postedAt: x.createdAt ? new Date(x.createdAt).toISOString() : null,
     }));
   },
@@ -121,7 +127,8 @@ export const BOARDS = {
             [...item.matchAll(/<tt:country>([^<]*)<\/tt:country>/g)].map((m) => m[1].trim()).filter(Boolean)
           ),
         ];
-        const description = strip(one(item, 'description'));
+        const rawDescription = one(item, 'description');
+        const description = strip(rawDescription);
         const remote = /\bremote\b/i.test(description);
         return {
           nativeId,
@@ -129,6 +136,7 @@ export const BOARDS = {
           url,
           location: [countries.join(', '), remote ? 'Remote' : ''].filter(Boolean).join(' '),
           description,
+          fullText: cleanText(rawDescription),
           postedAt: one(item, 'pubDate') ? new Date(one(item, 'pubDate')).toISOString() : null,
         };
       })
@@ -167,6 +175,8 @@ async function fetchRemoteRocketship(url) {
       url: x.url,
       location: [x.location, x.locationType === 'remote' ? 'Remote' : x.locationType || ''].filter(Boolean).join(' '),
       description: [x.jobDescriptionSummary, x.twoLineJobDescriptionSummary, (x.techStack || []).join(', ')].filter(Boolean).join(' '),
+      // The listing carries only summaries; the full text is looked up later, once per run budget.
+      fullText: null,
       postedAt: x.created_at || null,
       company: { name: x.company?.name || '', slug: x.company?.slug || '', homepage: x.company?.homePageURL || null },
       remote: x.locationType === 'remote',
@@ -262,6 +272,53 @@ export function scoreFor(job, profile) {
   };
 }
 
+const sha256 = (t) => createHash('sha256').update(t).digest('hex');
+const MAX_STORED_CHARS = 60000;
+
+/**
+ * Keeps the full posting text of every relevant role in job_descriptions, apart
+ * from jobs, because /jobs selects * over 400 rows. Aggregator listings are
+ * resolved to the employer's own posting when they link to Greenhouse or Ashby
+ * (at most `maxResolve` lookups a run), otherwise kept as the thin summary they
+ * are, which the drafting worker skips.
+ *
+ * Returns counts only.
+ */
+export async function storeDescriptions(db, rows, fullById, { resolve = resolveFull, wait = sleep, maxResolve = 10 } = {}) {
+  const have = new Map((await db.select('job_descriptions', '?select=job_id,sha,kind')).map((d) => [d.job_id, d]));
+  const out = [];
+  const counts = { stored: 0, resolved: 0, summary: 0 };
+  let lookups = 0;
+  for (const r of rows) {
+    const entry = fullById.get(r.id);
+    if (!entry) continue;
+    const prev = have.get(r.id);
+    let text = entry.text || null;
+    let kind = 'board';
+    if (!text) {
+      if (prev?.kind === 'resolved') continue;
+      kind = 'summary';
+      text = entry.summary || null;
+      if (lookups < maxResolve && r.url) {
+        if (lookups > 0) await wait(500);
+        lookups++;
+        const full = await resolve(r.url);
+        if (full) { text = full; kind = 'resolved'; }
+      }
+    }
+    if (!text) continue;
+    text = text.slice(0, MAX_STORED_CHARS);
+    const sha = sha256(text);
+    if (prev && prev.sha === sha && prev.kind === kind) continue;
+    out.push({ job_id: r.id, description: text, kind, sha, fetched_at: new Date().toISOString() });
+    counts.stored++;
+    if (kind === 'resolved') counts.resolved++;
+    if (kind === 'summary') counts.summary++;
+  }
+  if (out.length) await db.upsert('job_descriptions', out, { onConflict: 'owner,job_id' });
+  return counts;
+}
+
 async function main() {
   const args = parseArgs();
   let list = await owners();
@@ -324,6 +381,8 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
   const rows = [];
   const fresh = [];
   const status = {};
+  // Full posting text per job id, for the resume drafts. description above is untouched.
+  const fullById = new Map();
 
   for (const c of companies) {
     const fetcher = BOARDS[c.board_kind];
@@ -368,6 +427,7 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
         last_seen_at: new Date().toISOString(),
       };
       rows.push(row);
+      fullById.set(id, { text: p.fullText || null });
       kept++;
       if (!existing.has(id) && eligible && scored.total >= min) fresh.push(row);
     }
@@ -417,6 +477,7 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
         last_seen_at: new Date().toISOString(),
       };
       rows.push(row);
+      fullById.set(id, { text: null, summary: p.description });
       kept++;
       if (!existing.has(id) && eligible && scored.total >= min) fresh.push(row);
     }
@@ -470,6 +531,18 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
     .filter((k) => /^(greenhouse|ashby|lever|teamtailor):/.test(k.id) && !seen.has(k.id) && answered.has(k.company_slug))
     .map((k) => ({ id: k.id, closed: true }));
   if (stale.length) await db.updateEach('jobs', 'id', stale);
+
+  // Full posting text for the resume drafts: hers only, and never allowed to fail the poll.
+  if (primary) {
+    try {
+      status.descriptions = await storeDescriptions(db, rows.filter((r) => r.eligible && r.score >= min), fullById);
+    } catch (e) {
+      // db errors carry the failing row; print the status only.
+      const code = /-> (\d{3})/.exec(e.message)?.[1] || 'error';
+      status.descriptions = `failed: ${code}`;
+      console.warn(`  descriptions: store failed (${code})`);
+    }
+  }
 
   if (fresh.length) {
     await db.upsert(

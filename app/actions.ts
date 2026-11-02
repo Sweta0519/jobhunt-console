@@ -2,6 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireOwner } from './lib/supabase'
+import { checkFacts } from '../workers/lib/resume/facts.mjs'
+import { splitOutsideParens } from '../workers/lib/resume/parse-master.mjs'
+import type { ResumeDoc, MasterDoc, Requirement } from './lib/resumes'
 
 /**
  * Every write in the console goes through here.
@@ -17,7 +20,7 @@ import { requireOwner } from './lib/supabase'
 const now = () => new Date().toISOString()
 
 function ok() {
-  for (const p of ['/', '/approvals', '/questions', '/outreach', '/posts', '/jobs', '/record', '/companies']) {
+  for (const p of ['/', '/approvals', '/questions', '/outreach', '/posts', '/jobs', '/record', '/companies', '/resumes']) {
     revalidatePath(p)
   }
   return { ok: true as const }
@@ -254,4 +257,129 @@ export async function markNotificationsRead(ids: string[]) {
     .update({ read_at: now() })
     .in('id', ids)
   return error ? fail(error.message) : ok()
+}
+
+/**
+ * Resume drafts. Same rules as everywhere here: nothing is sent, the browser
+ * session carries the write, and the messages are fixed strings because a draft
+ * is personal data and an error message from the database may quote it. Never
+ * log a doc: Vercel keeps logs too.
+ */
+export async function approveResume(id: string) {
+  const { supabase } = await requireOwner()
+  const { error } = await supabase
+    .from('resume_drafts')
+    .update({ status: 'approved', approved_at: now(), updated_at: now() })
+    .eq('id', id)
+    .eq('status', 'draft')
+  return error ? fail('Could not approve this draft.') : ok()
+}
+
+export async function rejectResume(id: string) {
+  const { supabase } = await requireOwner()
+  const { error } = await supabase
+    .from('resume_drafts')
+    .update({ status: 'discarded', discarded_at: now(), approved_at: null, updated_at: now() })
+    .eq('id', id)
+    .in('status', ['draft', 'approved'])
+  return error ? fail('Could not reject this draft.') : ok()
+}
+
+/** "Draft again": the next worker run picks it up. Her edits are replaced then. */
+export async function requeueResume(id: string) {
+  const { supabase } = await requireOwner()
+  const { error } = await supabase
+    .from('resume_drafts')
+    .update({ status: 'queued', approved_at: null, updated_at: now() })
+    .eq('id', id)
+    .in('status', ['draft', 'discarded', 'failed', 'skipped'])
+  return error ? fail('Could not queue this draft.') : ok()
+}
+
+const MAX_EDIT = 800
+const SEG = /^[A-Za-z0-9]{1,12}$/
+const IDX = /^\d{1,2}$/
+
+/**
+ * Edit one piece of a draft. The path is checked against an allow-list, so a
+ * crafted path cannot reach a pinned field (employers, titles, dates, links).
+ * Her edits are flagged by the same fact check, never blocked: she is the
+ * source of her own facts. Editing returns the draft to "draft" because
+ * approval applies to the words she read.
+ */
+export async function editResumeField(id: string, path: string, text: string) {
+  const { supabase } = await requireOwner()
+  const value = String(text ?? '').trim()
+  if (value.length > MAX_EDIT) return fail('That is too long.')
+
+  const { data: row, error: readError } = await supabase
+    .from('resume_drafts')
+    .select('doc,updated_at,job_id,master_version,status,requirements')
+    .eq('id', id)
+    .maybeSingle()
+  if (readError || !row || !row.doc) return fail('That draft no longer exists.')
+  if (!['draft', 'approved'].includes(row.status)) return fail('This draft cannot be edited now.')
+
+  const doc = structuredClone(row.doc) as ResumeDoc
+  const seg = String(path).split('.')
+  const [head] = seg
+
+  if ((head === 'tagline' || head === 'summary') && seg.length === 1) {
+    if (!value) return fail('This cannot be empty.')
+    doc[head] = value
+  } else if (head === 'skills' && seg.length === 2 && SEG.test(seg[1])) {
+    const group = doc.skills.find((g) => g.id === seg[1])
+    if (!group) return fail('Unknown field.')
+    const items = splitOutsideParens(value) as string[]
+    if (!items.length) return fail('This cannot be empty.')
+    group.items = items
+  } else if (head === 'open_source' && seg.length === 2 && IDX.test(seg[1])) {
+    const list = doc.open_source
+    const i = Number(seg[1])
+    if (!list[i]) return fail('Unknown field.')
+    if (value) list[i] = { ...list[i], text: value }
+    else list.splice(i, 1)
+  } else if ((head === 'experience' || head === 'projects') && seg.length === 3 && SEG.test(seg[1]) && IDX.test(seg[2])) {
+    const owner = (doc[head] as { id: string; bullets: { text: string; from: string[] }[] }[]).find((r) => r.id === seg[1])
+    const i = Number(seg[2])
+    if (!owner || !owner.bullets[i]) return fail('Unknown field.')
+    if (value) owner.bullets[i] = { ...owner.bullets[i], text: value }
+    else if (owner.bullets.length > 1) owner.bullets.splice(i, 1)
+    else return fail('The last bullet of a role cannot be removed.')
+  } else {
+    return fail('Unknown field.')
+  }
+
+  // Flags are recomputed against the master the draft was made from.
+  const [{ data: master }, { data: job }, { data: desc }] = await Promise.all([
+    supabase.from('master_cv').select('doc').eq('version', row.master_version).maybeSingle(),
+    supabase.from('jobs').select('company,title').eq('id', row.job_id).maybeSingle(),
+    supabase.from('job_descriptions').select('description').eq('job_id', row.job_id).maybeSingle(),
+  ])
+  if (!master) return fail('Could not check this edit.')
+  const facts = checkFacts({
+    doc,
+    master: master.doc as MasterDoc,
+    job: job || {},
+    description: desc?.description || '',
+    requirements: (row.requirements as Requirement[] | null) || null,
+  })
+
+  const stamp = now()
+  const { data: saved, error } = await supabase
+    .from('resume_drafts')
+    .update({
+      doc,
+      fact_flags: [...facts.hard, ...facts.soft],
+      status: 'draft',
+      approved_at: null,
+      edited_at: stamp,
+      updated_at: stamp,
+    })
+    .eq('id', id)
+    .eq('updated_at', row.updated_at)
+    .select('id')
+  if (error) return fail('Could not save this edit.')
+  if (!saved?.length) return fail('This draft changed. Reload and try again.')
+  return ok()
 }
