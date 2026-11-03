@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RELEVANT, CLEARLY_NOT, titleFilters, withDefaults, scoreFor, eligibleFor, storeDescriptions } from './jobs.mjs';
+import { locationFit } from './lib/jobfit/jobfit.mjs';
 
 const keeps = (title) => RELEVANT.test(title) && !CLEARLY_NOT.test(title);
 
@@ -166,4 +167,42 @@ test('storeDescriptions caps stored text at 60000 characters', async () => {
   const db = fakeDb();
   await storeDescriptions(db, [{ id: 'ashby:acme:1' }], new Map([['ashby:acme:1', { text: 'x'.repeat(70000) }]]), { wait: async () => {} });
   assert.equal(db.written[0].description.length, 60000);
+});
+
+// A bare "Remote" names no country. eligibleFrom passes it, so scoring must not zero it.
+// All text below is invented.
+const fit = (location, description = '') => locationFit({ title: 'Technical Support Engineer', location, description }, withDefaults({})).score;
+
+test('a location that is only the word remote scores 12, not 0', () => {
+  for (const loc of ['Remote', 'Remote Remote', 'Remote - Remote', 'Fully remote']) {
+    assert.equal(fit(loc, 'Help customers debug their setup.'), 12, loc);
+  }
+  assert.doesNotMatch(locationFit({ title: 'X', location: 'Remote Remote', description: '' }, withDefaults({})).label, /Remote Remote/);
+});
+
+test('a bare remote whose text names Germany or the EU is confirmed', () => {
+  assert.equal(fit('Remote', 'We hire anywhere in Europe, including Germany.'), 19);
+  assert.equal(fit('Remote Remote', 'Open to candidates across the EU.'), 19);
+});
+
+test('bare remote does not rescue US-only, other countries or restrictions', () => {
+  assert.equal(fit('Remote', 'Applicants must be US-based only.'), 0);
+  assert.equal(fit('Remote Remote', 'You must be authorized to work in the United States.'), 0);
+  assert.equal(fit('Remote Brazil'), 0);
+  assert.equal(fit('Remote, India'), 0);
+  assert.equal(fit('Remote, Netherlands'), 0);
+  assert.equal(fit('Remote', 'You must be located in Brazil.'), 0);
+});
+
+test('a PostHog-shaped bare-remote posting clears the 70 cutoff', () => {
+  const job = {
+    title: 'Technical Support Engineer',
+    company: 'Examplehog',
+    location: 'Remote Remote',
+    description: 'Join our B2B SaaS support team. You will troubleshoot customer issues with the REST API, SQL, logs and webhooks, using Zendesk and Jira, and escalate bugs to engineers. Debugging, root cause analysis, documentation and clear communication with developers matter. Linux, JavaScript, Python, Docker and AWS are useful. We use AI and automation to triage tickets.',
+  };
+  const s = scoreFor(job, withDefaults({}));
+  assert.equal(s.breakdown.location, 12);
+  assert.ok(s.total >= 70, 'total ' + s.total);
+  assert.equal(eligibleFor(job.location, s.remote, s.germanRequired, withDefaults({})), true);
 });
