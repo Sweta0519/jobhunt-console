@@ -105,6 +105,11 @@ export async function approvePost(id: string, confirmSameDay = false) {
   if (post.status !== 'draft') return fail(`It is already ${post.status}.`)
 
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })
+  // The publish worker only picks up posts dated today, so approving a past date
+  // would leave the post sitting at "approved" forever with no error anywhere.
+  if (post.post_date && post.post_date < today) {
+    return fail('This date has passed, so it would never publish. Move it to a new date first.')
+  }
   if (post.post_date === today && !confirmSameDay) {
     return fail('This publishes today. Confirm to approve it.')
   }
