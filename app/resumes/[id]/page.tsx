@@ -91,6 +91,11 @@ export default async function ResumeReview({ params }: { params: Promise<{ id: s
           <StatusBadge status={d.status === 'draft' ? 'draft_ready' : d.status} />
           {job.closed && <span className="chip">closed</span>}
           {job.url && <ExternalLink href={job.url}>Open posting</ExternalLink>}
+          {live && doc && (
+            <a className="btn" href={`/resumes/${d.id}/print`} target="_blank" rel="noopener">
+              Preview resume
+            </a>
+          )}
         </div>
 
         {d.suspicious && <div className="notice">This posting contains text aimed at AI tools. Read it with that in mind.</div>}
@@ -251,6 +256,11 @@ export default async function ResumeReview({ params }: { params: Promise<{ id: s
             <ActionButton action={rejectResume.bind(null, d.id)} confirm="Reject this draft?">
               Reject
             </ActionButton>
+          )}
+          {live && doc && (
+            <a className="btn" href={`/resumes/${d.id}/print`} target="_blank" rel="noopener">
+              Preview resume
+            </a>
           )}
           {live && (
             <a className="btn" href={`/resumes/${d.id}/print?auto=1`} target="_blank" rel="noopener">

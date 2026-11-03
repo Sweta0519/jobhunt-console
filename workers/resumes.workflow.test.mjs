@@ -9,7 +9,8 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const read = (p) => readFileSync(join(root, p), 'utf8');
+// Git may check these out with CRLF on Windows; the guards match on \n.
+const read = (p) => readFileSync(join(root, p), 'utf8').replace(/\r\n/g, '\n');
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
