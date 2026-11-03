@@ -344,9 +344,11 @@ async function draft(db, { dry, bin, binArgs }) {
       const attempts = (row.attempts || 0) + 1;
       await patchRow(row.id, { status: 'drafting', last_attempt_at: now(), attempts });
 
-      const rules = coverOnly || !form
+      const classified = form ? classifyForm(form, job) : null;
+      const rules = coverOnly || !classified
         ? { items: [], toModel: [], wantsCover: coverOnly, suspicious: false }
-        : classifyForm(form, job);
+        : classified;
+      const coverAsk = classified?.coverAsk || '';
       const wantsCover = coverOnly || rules.wantsCover;
       const sent = rules.toModel.map((q) => q.id);
       const checkForm = form && !coverOnly ? form : { questions: [] };
@@ -363,7 +365,7 @@ async function draft(db, { dry, bin, binArgs }) {
             const nonce = randomBytes(16).toString('hex');
             const res = await runClaude({
               bin, binArgs, token, schema: ANSWER_SCHEMA, system: SYSTEM_PROMPT, model: cfg.model,
-              input: buildUserMessage({ master, job, description: desc?.description || '', questions: rules.toModel, nonce, wantsCover, feedback }),
+              input: buildUserMessage({ master, job, description: desc?.description || '', questions: rules.toModel, nonce, wantsCover, coverAsk, feedback }),
             });
             rate = res.rate;
             model = res.model || model;

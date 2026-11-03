@@ -51,6 +51,26 @@ test('questions are sent without group or role, options with ids', () => {
   assert.deepEqual(json[0], { id: 'q_00000001', label: 'Why us?', help: 'hint', kind: 'single_select', options: [{ id: 'o0', label: 'Alpha' }], char_limit: 50 });
 });
 
+test('a brief cover letter field gets the help text and a one paragraph instruction', () => {
+  const base = { master, job: syntheticJob, nonce: 'n'.repeat(32), wantsCover: true, description: '', questions: [] };
+  const brief = buildUserMessage({ ...base, coverAsk: 'Cover letter Seriously, just write a couple of sentences' });
+  assert.match(brief, /just write a couple of sentences/);
+  assert.match(brief, /2 to 4 sentences in exactly one paragraph/);
+  for (const w of ['Please keep it short', 'Bitte kurz', 'a few sentences are fine', 'brief note', 'a few lines']) {
+    assert.match(buildUserMessage({ ...base, coverAsk: `Cover letter ${w}` }), /exactly one paragraph/, w);
+  }
+  const normal = buildUserMessage({ ...base, coverAsk: 'Cover letter Tell us why you want to join' });
+  assert.ok(!/exactly one paragraph/.test(normal));
+  assert.ok(!/exactly one paragraph/.test(buildUserMessage(base)));
+  assert.ok(!/exactly one paragraph/.test(buildUserMessage({ ...base, wantsCover: false, coverAsk: 'short' })));
+  assert.match(SYSTEM_PROMPT, /3 or 4 paragraphs/);
+});
+
+test('the system prompt says honest AI or LLM mentions are not instructions', () => {
+  assert.match(SYSTEM_PROMPT, /honest mention of AI tools or LLM products/);
+  assert.match(SYSTEM_PROMPT, /Only text addressed to an AI or screener/);
+});
+
 test('retry feedback is codes, refs and safe tokens only', () => {
   const fb = buildFeedback([
     { code: 'number_not_in_source', ref: 'a.q_1', token: '999' },

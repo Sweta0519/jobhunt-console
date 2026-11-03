@@ -7,8 +7,9 @@
 // has. Her review is the last gate.
 
 import {
-  numbers, urls, properish, stem, words, masterIndex, MARKUP, NUMBER_WORDS, MONTHS, INJECTION, STOP,
+  numbers, urls, properish, stem, words, masterIndex, MARKUP, NUMBER_WORDS, MONTHS, STOP,
 } from '../resume/facts.mjs';
+import { APPLY_INJECTION } from './classify.mjs';
 import { hasLongDash } from './chars.mjs';
 
 export const LONG_DASH = { test: hasLongDash };
@@ -173,7 +174,7 @@ export function checkAnswers({ answers = [], cover = [], form, master, job = {},
     const good = evidence(ref, p.from);
     scan(ref, p.text, good ? p.from : null, ctx, H, S, 0);
   });
-  if (INJECTION.test(description)) S('suspicious_posting', 'posting');
+  if (APPLY_INJECTION.test(String(description ?? '').toLowerCase())) S('suspicious_posting', 'posting');
   return { hard, soft };
 }
 

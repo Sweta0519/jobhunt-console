@@ -18,11 +18,18 @@ const DEMOGRAPHIC = /\b(gender|geschlecht|pronouns?|race(?! conditions?)|ethnic\
 const CONSENT = /\b(consent|agree|acknowledge|certify|attest|privacy|gdpr|datenschutz|einwilligung|ich stimme|terms|background check|hintergrundpr\w*)\b/;
 const SOCIAL = /\b(twitter|instagram|facebook|tiktok|mastodon|bluesky|telegram|discord|skype|whatsapp|xing|youtube|stack ?overflow|kaggle|dribbble|behance)\b|\bx\.com\b|^x\b[\s:*?(]*(handle|profile|url|username|account|link|twitter|$)/;
 const SENSITIVE = /(date of birth|birth ?date|geburtsdatum|geburtstag|passport|reisepass|national id|personalausweis|tax id|steuer\w*|\biban\b|bank account|kontonummer|password|passwort|social security|sozialversicherung\w*)/;
-const INJECTION = /ignore (all|any|previous|prior)|disregard|system prompt|as an ai|language model|\bllm\b|ai (screener|assistant|tool)|\bassistant:|you are an? (ai|assistant)/;
+// Real instructions only. Postings and forms mention LLMs and AI tools honestly
+// ("LLM observability", "learn a new AI tool"), so those words alone do not count.
+export const APPLY_INJECTION = /ignore (all|any|the|previous|prior|above)\b.{0,30}(instruction|prompt|rule|direction)|ignore (the )?(above|previous|prior)\b|disregard (all|any|the|your|previous|prior)\b.{0,30}(instruction|prompt|rule|direction)|system prompt|\bas an ai\b|\bassistant:|you are an? (ai|assistant)\b|if you are an? (ai|llm|language model|bot|chatbot)|\bai (screener|reviewer|grader|evaluator)\b|(note|message|instructions?) (to|for) (the )?(ai|llm|model|assistant|screener)/;
 const AI_USE = /(\buse[ds]?\b|\busing\b|utili[sz]\w*|with the help of|assist\w* (by|from)|generated).{0,40}\b(ai|artificial intelligence|chatgpt|gpt|llm|copilot|claude|gemini)\b|written (by you|yourself)|your own words|\bki\b.{0,20}(tool|unterst|genutzt|verwendet)|k[uü]nstliche intelligenz/;
 const COVER_LABEL = /cover letter|covering letter|anschreiben|motivationsschreiben|motivation letter/;
 const YEARS = /how many years|years of (professional |work |relevant )?experience|wie viele jahre|jahre (an )?berufserfahrung/;
 const REFERRAL = /how (did|do) you (first )?(hear|find out|learn about|come across|find (us|this|the (role|job|position)|about))|where did you (first )?(hear|find out|learn about|see (this|the|our))|(hear|heard|find out|found out) about (us|this|the|our)|aufmerksam geworden|\breferr(al|als|ed|er)\b|do you know anyone|know anyone at|wie haben sie von uns|wie sind sie auf uns|woher kennen/;
+
+const WORK_AUTH = /authori[sz]ed to work|work authori[sz]ation|right to work|(legally )?(allowed|entitled|eligible) to work|arbeitserlaubnis|arbeitsgenehmigung/;
+
+// Anything about needing or avoiding a visa, permit or sponsorship.
+const SPONSOR_ISH = /sponsor\w*|(requir|need|ben[oö]tig)\w*.{0,20}(visa|permit|visum)|(without|ohne).{0,20}(visa|permit|visum)|visa.{0,20}requir|work visa/;
 
 // First match wins. Authorization and sponsorship carry a country scope, below.
 const FIXED = [
@@ -38,8 +45,9 @@ const FIXED = [
   ['salary_expectation', /salary|compensation expectation|expected (pay|compensation)|pay expectation|gehalt\w*|verg[uü]tung|desired remuneration/],
   ['notice_period', /notice period|k[uü]ndigungsfrist/],
   ['earliest_start', /earliest.{0,25}start|start date|available (to start|from)|when can you start|verf[uü]gbar ab|eintrittsdatum|startdatum/],
-  ['sponsorship', /sponsor\w*|require.{0,20}visa|visa.{0,20}require|work visa/],
-  ['work_auth', /authori[sz]ed to work|work authori[sz]ation|right to work|(legally )?(allowed|entitled|eligible) to work|arbeitserlaubnis|arbeitsgenehmigung/],
+  // The three auth entries all go through authKind(), which decides the real kind.
+  ['sponsorship', SPONSOR_ISH],
+  ['work_auth', WORK_AUTH],
   ['visa_status', /visa|aufenthaltstitel|residence permit|work permit|aufenthaltsstatus/],
   ['willing_to_relocate', /relocat\w*|umzug|umziehen/],
   ['remote_preference', /remote.{0,30}prefer\w*|prefer\w*.{0,30}(remote|on-?site|hybrid)|work (arrangement|model)/],
@@ -54,6 +62,31 @@ const OTHER_COUNTRY = /(?<![a-z])(u\.s\.a?|usa|us|united states|america|uk|u\.k\
 const GERMANY = /\b(germany|deutschland|german)\b/;
 const EU = /\b(eu|e\.u\.|european union|europe|european|eea|schengen)\b/;
 const EU_COUNTRIES = /\b(germany|deutschland|france|frankreich|spain|spanien|italy|italien|netherlands|niederlande|belgium|belgien|austria|[oö]sterreich|portugal|ireland|irland|poland|polen|sweden|schweden|denmark|d[aä]nemark|finland|finnland|czech\w*|tschechien|hungary|ungarn|romania|rum[aä]nien|bulgaria|bulgarien|greece|griechenland|croatia|kroatien|slovakia|slowakei|slovenia|slowenien|estonia|estland|latvia|lettland|lithuania|litauen|luxembourg|luxemburg|malta|cyprus|zypern)\b/;
+
+// "Authorised to work ... without visa sponsorship": the answer is yes, never the
+// sponsorship key (whose saved value is no). Checked first.
+const WORK_WITHOUT = [
+  /\b(authori[sz]ed|allowed|eligible|entitled|permitted|able|legally|right|can you|berechtigt)\b[^?]{0,80}\bwork\w*\b[^?]{0,80}\b(without|ohne)\b[^?]{0,30}\b(need\w*\s+|requir\w*\s+)?(a |an |any )?(visa|visum|sponsor\w*|work permit)/,
+  /\bno (visa )?sponsor\w*( is| are)?( required| needed)?|sponsor\w* (is |are )?(not|no longer) (required|needed)/,
+  /\bohne (visum|visa|sponsoring|sponsorship|aufenthaltstitel)/,
+];
+const SPONSOR_PLAIN = /\b(do|does|will|would|did)\b.{0,40}\b(require|need)\b.{0,25}sponsor/;
+// Any negation or inversion makes the polarity unclear: needs her, no bank value.
+const NEGATED = /\b(not|never|nicht|kein\w*|free of|frei von|non)\b|n't|\bno (need|visa|sponsor\w*|work permit|requirement)/;
+
+/** 'work_auth' | 'sponsorship' | null (polarity unclear, needs her). */
+function authKind(l) {
+  for (const re of WORK_WITHOUT) {
+    const m = re.exec(l);
+    if (m) return NEGATED.test(l.replace(m[0], ' ')) ? null : 'work_auth';
+  }
+  const sponsor = SPONSOR_ISH.test(l);
+  const auth = WORK_AUTH.test(l);
+  if (sponsor && auth) return null;
+  if (sponsor) return SPONSOR_PLAIN.test(l) && !NEGATED.test(l) ? 'sponsorship' : null;
+  if (auth) return NEGATED.test(l) ? null : 'work_auth';
+  return null;
+}
 
 /** 'de' | 'eu' | 'other' | null for where the JOB is, from its location text. */
 function jobRegion(location) {
@@ -86,13 +119,14 @@ function scopedKey(kind, label, location) {
 /**
  * @param {{ questions: any[] }} form
  * @param {{ location?: string }} job
- * @returns {{ items: any[], toModel: any[], wantsCover: boolean, suspicious: boolean }}
+ * @returns {{ items: any[], toModel: any[], wantsCover: boolean, suspicious: boolean, coverAsk: string }}
  */
 export function classifyForm(form, job = {}) {
   const items = [];
   const toModel = [];
   let wantsCover = false;
   let suspicious = false;
+  const coverAsk = []; // label and help of the cover letter fields, so the model sees "just a couple of sentences"
 
   for (const q of form.questions) {
     const label = t(`${q.label}`);
@@ -104,14 +138,14 @@ export function classifyForm(form, job = {}) {
     // One option only: a checkbox style acknowledgement, never a real choice.
     if ((q.kind === 'single_select' || q.kind === 'multi_select') && q.options?.length === 1) { done({ cls: 'blank' }); continue; }
     if (SENSITIVE.test(label)) { done({ cls: 'blank', why: 'sensitive' }); continue; }
-    if (INJECTION.test(label) || INJECTION.test(t(q.help))) { suspicious = true; done({ cls: 'needs_you', why: 'suspicious' }); continue; }
+    if (APPLY_INJECTION.test(label) || APPLY_INJECTION.test(t(q.help))) { suspicious = true; done({ cls: 'needs_you', why: 'suspicious' }); continue; }
     if (AI_USE.test(label)) { done({ cls: 'needs_you', why: 'ai_use' }); continue; }
     if (q.kind === 'file') {
-      if (q.role === 'cover_letter' || COVER_LABEL.test(label)) wantsCover = true;
+      if (q.role === 'cover_letter' || COVER_LABEL.test(label)) { wantsCover = true; coverAsk.push(`${q.label ?? ''} ${q.help ?? ''}`); }
       done({ cls: 'upload' });
       continue;
     }
-    if (q.role === 'cover_letter' || COVER_LABEL.test(label)) { wantsCover = true; done({ cls: 'drafted', source: 'cover' }); continue; }
+    if (q.role === 'cover_letter' || COVER_LABEL.test(label)) { wantsCover = true; coverAsk.push(`${q.label ?? ''} ${q.help ?? ''}`); done({ cls: 'drafted', source: 'cover' }); continue; }
 
     // Before the bank patterns: "how did you hear about us (LinkedIn, ...)" names LinkedIn.
     if (REFERRAL.test(label)) { done({ cls: 'needs_you', why: 'referral' }); continue; }
@@ -123,9 +157,15 @@ export function classifyForm(form, job = {}) {
       if (re.test(label)) { hit = key; break; }
     }
     if (hit) {
-      const key = hit === 'sponsorship' || hit === 'work_auth' ? scopedKey(hit, label, job.location) : hit;
-      if (key) done({ cls: 'fixed', bank_key: key });
-      else done({ cls: 'needs_you', why: 'country_scope' });
+      if (hit === 'sponsorship' || hit === 'work_auth') {
+        const kind = authKind(label);
+        if (!kind) { done({ cls: 'needs_you', why: 'polarity' }); continue; }
+        const key = scopedKey(kind, label, job.location);
+        if (key) done({ cls: 'fixed', bank_key: key });
+        else done({ cls: 'needs_you', why: 'country_scope' });
+        continue;
+      }
+      done({ cls: 'fixed', bank_key: hit });
       continue;
     }
     if (YEARS.test(label)) { done({ cls: 'needs_you', why: 'duration' }); continue; }
@@ -135,5 +175,5 @@ export function classifyForm(form, job = {}) {
     }
     toModel.push(q);
   }
-  return { items, toModel, wantsCover, suspicious };
+  return { items, toModel, wantsCover, suspicious, coverAsk: coverAsk.join(' ').replace(/\s+/g, ' ').trim().slice(0, 400) };
 }
