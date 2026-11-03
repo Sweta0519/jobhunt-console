@@ -60,3 +60,10 @@ test('the system prompt carries no dash punctuation and no personal data', () =>
   assert.ok(!/[–—]/.test(SYSTEM_PROMPT));
   assert.ok(!SYSTEM_PROMPT.includes('@'));
 });
+
+test('the prompt keeps every project but lets open source items be dropped', () => {
+  assert.match(SYSTEM_PROMPT, /projects: include every project in the master/);
+  assert.match(SYSTEM_PROMPT, /at least one bullet per project/);
+  assert.match(SYSTEM_PROMPT, /open_source: .*drop open source items/);
+  assert.ok(!/drop projects/i.test(SYSTEM_PROMPT));
+});

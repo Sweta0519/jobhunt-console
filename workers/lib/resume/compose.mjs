@@ -62,6 +62,16 @@ export function composeDoc(master, rawOutput) {
     if (!m || projOut.get(p.project) !== p) continue;
     projects.push({ id: m.id, title: m.title, meta: m.meta, bullets: p.bullets });
   }
+  // Every master project stays in every draft, whatever the model returned.
+  // One it left out is appended after the model's order, with the master's text.
+  const present = new Set(projects.map((p) => p.id));
+  for (const m of master.projects || []) {
+    if (present.has(m.id)) continue;
+    projects.push({
+      id: m.id, title: m.title, meta: m.meta,
+      bullets: (m.bullets || []).map((b) => ({ text: b.text, from: [String(b.id)] })),
+    });
+  }
 
   return {
     schema: 1,

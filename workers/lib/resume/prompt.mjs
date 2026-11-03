@@ -28,7 +28,8 @@ Fields:
 - summary: 2 to 4 sentences, at most the master summary's length, leading with what matters most for this posting.
 - skills: reference groups by id. items must be copied character for character from that group's items. Reorder, and drop what does not help. Do not include the languages group: it is added automatically.
 - experience: include every role in the master, in any bullet order. Reference the role by id. Each bullet has text and from, the ids of the master bullets it is based on. A bullet may combine or trim its sources. Use no more bullets than the role has in the master. Do not write titles, companies, locations or dates: they are added automatically.
-- open_source and projects: same bullet rules. You may drop projects or open source items that do not help, and put the most relevant first.
+- open_source: same bullet rules. You may drop open source items that do not help, and put the most relevant first.
+- projects: include every project in the master, most relevant first. Same bullet rules: you may trim bullets, but keep at least one bullet per project. Never drop a project.
 - Total length must not exceed the master's: the result has to fit on one A4 page.
 
 The master was last tailored for a role at n8n, so it leans on n8n. Unless the posting is about n8n or workflow automation, treat n8n as one tool among others and one community among others: do not lead with it in the tagline, summary or skills. Do not remove the underlying facts when they are relevant.`;

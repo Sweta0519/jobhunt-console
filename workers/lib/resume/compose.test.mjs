@@ -54,3 +54,49 @@ test('long dashes in model text are normalised', () => {
   assert.equal(normText(' 2019–2021 '), '2019-2021');
   assert.equal(normText('fast — and clear'), 'fast, and clear');
 });
+
+// Invented second project, so the master has two.
+const twoProjects = () => {
+  const m = structuredClone(master);
+  m.projects.push({
+    id: 'p2', title: 'Sample Log Viewer', meta: 'Invented side project',
+    bullets: [
+      { id: 'p2.b1', text: 'Wrote a viewer that colours log lines by level.' },
+      { id: 'p2.b2', text: 'Added a filter box for 3 log formats.' },
+    ],
+  });
+  return m;
+};
+
+test('a project the model left out is appended with the master text', () => {
+  const m = twoProjects();
+  const doc = composeDoc(m, goodOutput()); // output only has p1
+  assert.deepEqual(doc.projects.map((p) => p.id), ['p1', 'p2']);
+  const p2 = doc.projects[1];
+  assert.equal(p2.title, 'Sample Log Viewer');
+  assert.equal(p2.meta, 'Invented side project');
+  assert.deepEqual(p2.bullets, [
+    { text: 'Wrote a viewer that colours log lines by level.', from: ['p2.b1'] },
+    { text: 'Added a filter box for 3 log formats.', from: ['p2.b2'] },
+  ]);
+});
+
+test('the model project order is kept when it returns all projects', () => {
+  const m = twoProjects();
+  const out = goodOutput();
+  out.projects = [
+    { project: 'p2', bullets: [{ text: 'Wrote a log viewer.', from: ['p2.b1'] }] },
+    out.projects[0],
+  ];
+  const doc = composeDoc(m, out);
+  assert.deepEqual(doc.projects.map((p) => p.id), ['p2', 'p1']);
+  assert.equal(doc.projects[0].bullets[0].text, 'Wrote a log viewer.');
+});
+
+test('appended projects add no hard failure', async () => {
+  const { checkFacts } = await import('./facts.mjs');
+  const m = twoProjects();
+  const doc = composeDoc(m, goodOutput());
+  const r = checkFacts({ doc, master: m, output: goodOutput() });
+  assert.deepEqual(r.hard, []);
+});
