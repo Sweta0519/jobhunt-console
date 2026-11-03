@@ -295,7 +295,65 @@ kbd {
 }
 
 /* ---- resume drafts ---- */
-.resume-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; margin-top: 8px; }
-@media (max-width: 680px) { .resume-grid { grid-template-columns: 1fr; } }
-mark.diff-add { background: var(--wait-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
-mark.diff-flag { background: var(--fail-soft); color: var(--fail); border-radius: 3px; padding: 0 2px; }
+.shell.shell-wide { max-width: 1480px; }
+.resume-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 8px; }
+.resume-main, .resume-side { min-width: 0; }
+.posting-fold > summary { cursor: pointer; list-style: none; }
+.posting-fold > summary::-webkit-details-marker { display: none; }
+.posting-fold > summary h2 { display: inline-block; margin-top: 20px; }
+.posting-fold > summary h2::before { content: "B8"; display: inline-block; margin-right: 6px; }
+.posting-fold[open] > summary h2::before { transform: rotate(90deg); }
+.resume-side h2 { margin-top: 20px; }
+@media (min-width: 1100px) {
+  .resume-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 620px); gap: 28px; }
+  .resume-side { position: sticky; top: calc(var(--topbar-h) + var(--actionbar-h) + 8px); max-height: calc(100vh - var(--topbar-h) - var(--actionbar-h) - 24px); overflow-y: auto; }
+}
+mark.diff-add { background: var(--wait-soft); color: inherit; border-radius: 3px; padding: 0 2px; text-decoration: underline dotted; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+mark.diff-flag { background: var(--fail-soft); color: var(--fail); border-radius: 3px; padding: 0 2px; font-weight: 600; text-decoration: underline wavy; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+
+/* ---- resumes: list tabs and clickable cards ---- */
+.rtab { display: inline-flex; align-items: center; min-height: 34px; padding: 6px 12px; font-size: 13px; border-color: var(--border); }
+.rtab[aria-current='page'] { background: var(--accent-soft); color: var(--accent); font-weight: 600; border-color: var(--accent); }
+.list-title { display: flex; align-items: center; gap: 10px; }
+.card-click { position: relative; cursor: pointer; }
+.card-click:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card-link { text-decoration: none; }
+.card-link:hover { text-decoration: underline; }
+.card-link:focus-visible { outline: none; }
+.card-link::after { content: ''; position: absolute; inset: 0; border-radius: var(--radius); }
+
+/* ---- resumes: review page ---- */
+:root { --topbar-h: 62px; --actionbar-h: 56px; }
+.resume-nav { align-items: center; margin-top: 12px; }
+.resume-back { display: inline-flex; align-items: center; min-height: 34px; font-size: 14px; color: var(--muted); }
+.summary-strip { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: 0 0 12px; }
+.summary-strip a {
+  display: inline-flex; align-items: center; min-height: 34px; padding: 4px 12px;
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  background: var(--surface); font-size: 13.5px; text-decoration: none;
+}
+.summary-strip a:hover { background: var(--surface-2); }
+.resume-actionbar {
+  position: sticky; top: var(--topbar-h); z-index: 15;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  min-height: var(--actionbar-h); box-sizing: border-box; padding: 8px 0; margin-bottom: 8px;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+}
+.anchor { scroll-margin-top: calc(var(--topbar-h) + var(--actionbar-h) + 12px); }
+.editable { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.editable-text { min-width: 0; overflow-wrap: anywhere; }
+.legend { line-height: 1.8; }
+.posting-fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: no-preference) {
+  .posting-fold > summary h2::before { transition: transform 120ms; }
+}
+@media (max-width: 680px) {
+  :root { --topbar-h: 96px; }
+  .rtab, .summary-strip a, .resume-back { min-height: 40px; }
+  .resume-actionbar { position: static; padding-top: 0; border-bottom: 0; }
+  .editable .btn { min-height: 40px; }
+  .shell { overflow-x: clip; }
+}
+@media (max-width: 1099px) {
+  .resume-side { position: static; max-height: none; overflow: visible; }
+}

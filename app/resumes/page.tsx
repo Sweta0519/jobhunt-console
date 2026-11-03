@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { requirePrimary, reasonCopy, type FactFlag } from '../lib/resumes'
-import { NavBar, Section, Empty, StatusBadge, formatDay } from '../components/ui'
+import { NavBar, Empty, StatusBadge, formatDay } from '../components/ui'
 import { ActionButton } from '../components/ActionButton'
 import { Logo } from '../components/Logo'
 import { requeueResume } from '../actions'
@@ -17,7 +17,12 @@ type JobLite = {
   score: number | null; closed: boolean; status: string; url: string | null
 }
 
-export default async function Resumes() {
+const VIEWS = ['review', 'approved', 'waiting', 'other'] as const
+type View = (typeof VIEWS)[number]
+
+export default async function Resumes({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const sp = await searchParams
+  const view: View = (VIEWS as readonly string[]).includes(sp.view ?? '') ? (sp.view as View) : 'review'
   const { supabase } = await requirePrimary()
 
   // The list never selects doc: it is large and the queue does not show it.
@@ -45,14 +50,20 @@ export default async function Resumes() {
   const approved = by('approved')
   const notDrafted = by('skipped', 'failed', 'discarded')
 
-  const Title = ({ d }: { d: Row }) => {
-    const j = jobs.get(d.job_id)!
-    return (
-      <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Logo name={j.company} slug={j.company_slug} path={logos.get(j.company_slug ?? '')} />
-        {['draft', 'approved'].includes(d.status) ? <Link href={`/resumes/${d.id}`}>{j.title}</Link> : j.title}
-      </h3>
-    )
+  const shown = { review, approved, waiting, other: notDrafted }[view]
+
+  const tabs: { key: View; label: string; count: number }[] = [
+    { key: 'review', label: 'To review', count: review.length },
+    { key: 'approved', label: 'Approved', count: approved.length },
+    { key: 'waiting', label: 'Waiting', count: waiting.length },
+    { key: 'other', label: 'Not drafted', count: notDrafted.length },
+  ]
+
+  const empty: Record<View, string> = {
+    review: `No drafts waiting for you. New ones show up here after the next drafting run, at most ${cap} a day. Nothing is sent.`,
+    approved: 'Nothing approved yet. Open a draft under To review, read it, and approve it when it looks right.',
+    waiting: `Nothing in the queue. Roles that score well are drafted on the next run, at most ${cap} a day.`,
+    other: 'Nothing here. If a role cannot be drafted, it shows up here with the reason.',
   }
 
   return (
@@ -65,110 +76,69 @@ export default async function Resumes() {
           save the PDF yourself.
         </p>
 
-        <Section title="To review">
-          {review.length === 0 ? (
-            <Empty>No drafts waiting for you.</Empty>
+        <nav className="row tabs" aria-label="Resume lists">
+          {tabs.map((t) => (
+            <Link
+              key={t.key}
+              className="chip rtab"
+              href={t.key === 'review' ? '/resumes' : `/resumes?view=${t.key}`}
+              aria-current={t.key === view ? 'page' : undefined}
+            >
+              {t.label} {t.count}
+            </Link>
+          ))}
+        </nav>
+
+        <section aria-label={tabs.find((t) => t.key === view)!.label} style={{ marginTop: 16 }}>
+          {shown.length === 0 ? (
+            <Empty>{empty[view]}</Empty>
           ) : (
-            review.map((d) => {
+            shown.map((d) => {
               const j = jobs.get(d.job_id)!
               const gaps = d.gaps?.length ?? 0
               const flags = d.fact_flags?.length ?? 0
-              return (
-                <article key={d.id} className="card">
-                  <div className="spread">
-                    <Title d={d} />
-                    <span className="score num">{j.score ?? '-'}</span>
-                  </div>
-                  <div className="card-meta">{j.company}{d.drafted_at ? ` · drafted ${formatDay(d.drafted_at)}` : ''}</div>
-                  <div className="row" style={{ marginTop: 8 }}>
-                    <StatusBadge status="draft_ready" />
-                    <span className="chip">{gaps} gap{gaps === 1 ? '' : 's'}</span>
-                    <span className="chip">{flags} flag{flags === 1 ? '' : 's'}</span>
-                    {j.closed && <span className="chip">closed</span>}
-                  </div>
-                </article>
-              )
-            })
-          )}
-        </Section>
-
-        <Section title="Waiting" hint={`Drafted on the next run. At most ${cap} a day.`}>
-          {waiting.length === 0 ? (
-            <Empty>Nothing in the queue.</Empty>
-          ) : (
-            waiting.map((d) => {
-              const j = jobs.get(d.job_id)!
-              return (
-                <article key={d.id} className="card">
-                  <div className="spread">
-                    <Title d={d} />
-                    <span className="score num">{j.score ?? '-'}</span>
-                  </div>
-                  <div className="row" style={{ marginTop: 8 }}>
-                    <span className="card-meta">{j.company}</span>
-                    <StatusBadge status={d.status} />
-                  </div>
-                </article>
-              )
-            })
-          )}
-        </Section>
-
-        <Section title="Approved">
-          {approved.length === 0 ? (
-            <Empty>Nothing approved yet.</Empty>
-          ) : (
-            approved.map((d) => {
-              const j = jobs.get(d.job_id)!
-              return (
-                <article key={d.id} className="card">
-                  <div className="spread">
-                    <Title d={d} />
-                    <span className="score num">{j.score ?? '-'}</span>
-                  </div>
-                  <div className="row" style={{ marginTop: 8 }}>
-                    <span className="card-meta">{j.company}</span>
-                    <StatusBadge status="approved" />
-                    {j.closed && <span className="chip">closed</span>}
-                  </div>
-                </article>
-              )
-            })
-          )}
-        </Section>
-
-        <Section title="Not drafted">
-          {notDrafted.length === 0 ? (
-            <Empty>Nothing here.</Empty>
-          ) : (
-            notDrafted.map((d) => {
-              const j = jobs.get(d.job_id)!
+              const open = ['draft', 'approved'].includes(d.status)
               const thin = d.reason === 'thin_description' || d.reason === 'no_description'
-              const again = d.status !== 'skipped' || !thin
+              const again = view === 'other' && (d.status !== 'skipped' || !thin)
+              const when = d.drafted_at ? `drafted ${formatDay(d.drafted_at)}` : ''
               return (
-                <article key={d.id} className="card">
+                <article key={d.id} className={`card${open ? ' card-click' : ''}`}>
                   <div className="spread">
-                    <Title d={d} />
-                    <span className="score num">{j.score ?? '-'}</span>
+                    <h2 className="card-title list-title">
+                      <Logo name={j.company} slug={j.company_slug} path={logos.get(j.company_slug ?? '')} />
+                      {open ? (
+                        <Link href={`/resumes/${d.id}`} className="card-link">{j.title}</Link>
+                      ) : (
+                        j.title
+                      )}
+                    </h2>
+                    <span className="score num" aria-label={`Score ${j.score ?? 'none'}`}>{j.score ?? '-'}</span>
                   </div>
-                  <div className="card-meta">{j.company}</div>
+                  <div className="card-meta">{j.company}{when ? ` · ${when}` : ''}</div>
                   <div className="row" style={{ marginTop: 8 }}>
-                    <StatusBadge status={d.status} />
-                    {d.status !== 'discarded' && <span className="card-meta">{reasonCopy(d.reason)}</span>}
-                    {j.url && thin && (
-                      <a className="chip" href={j.url} target="_blank" rel="noopener noreferrer">Open posting</a>
-                    )}
+                    <StatusBadge status={d.status === 'draft' ? 'draft_ready' : d.status} />
+                    {open && <span className="chip">{gaps} gap{gaps === 1 ? '' : 's'}</span>}
+                    {open && <span className="chip">{flags} flag{flags === 1 ? '' : 's'}</span>}
+                    {j.closed && <span className="chip">closed</span>}
                   </div>
-                  {again && (
-                    <div className="row" style={{ marginTop: 10 }}>
-                      <ActionButton action={requeueResume.bind(null, d.id)}>Draft again</ActionButton>
+                  {view === 'other' && (
+                    <p className="card-meta" style={{ margin: '8px 0 0' }}>
+                      {d.status === 'discarded' ? 'You can draft this one again.' : reasonCopy(d.reason)}
+                    </p>
+                  )}
+                  {view === 'other' && (again || (j.url && thin)) && (
+                    <div className="row card-actions" style={{ marginTop: 10 }}>
+                      {j.url && thin && (
+                        <a className="btn" href={j.url} target="_blank" rel="noopener noreferrer">Open posting</a>
+                      )}
+                      {again && <ActionButton action={requeueResume.bind(null, d.id)}>Draft again</ActionButton>}
                     </div>
                   )}
                 </article>
               )
             })
           )}
-        </Section>
+        </section>
       </main>
     </>
   )

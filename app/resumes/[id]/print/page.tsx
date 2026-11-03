@@ -1,12 +1,8 @@
 import { notFound } from 'next/navigation'
-import { Carlito } from 'next/font/google'
 import { requirePrimary, type ResumeDoc } from '../../../lib/resumes'
 import { Cv } from '../../Cv'
 import { PrintControls } from '../../PrintControls'
-
-// Metric-compatible with Calibri, served from /_next/static: the same letters on
-// every device, and no request to Google at runtime.
-const carlito = Carlito({ weight: ['400', '700'], style: ['normal', 'italic'], subsets: ['latin'], display: 'swap' })
+import { carlito } from '../../cvFont'
 
 export const dynamic = 'force-dynamic'
 

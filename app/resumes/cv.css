@@ -30,3 +30,9 @@
 @media screen {
   .cv-sheet { max-width: 210mm; margin: 0 auto; box-shadow: var(--shadow-hover); }
 }
+
+/* Review page preview: the same sheet, scaled by CvPreview. White in both themes. */
+.cv-preview { width: 100%; }
+.cv-preview-fit { position: relative; overflow: hidden; }
+.cv-preview-sheet { width: 210mm; transform-origin: top left; }
+.cv-preview-sheet .cv-sheet { max-width: none; margin: 0; background: #fff; min-height: 297mm; }

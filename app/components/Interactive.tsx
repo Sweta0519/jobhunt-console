@@ -145,19 +145,28 @@ export function InlineEdit({
   initial,
   limit,
   onSave,
+  label,
+  onOpenChange,
 }: {
   initial: string
   limit?: number
   onSave: (text: string) => Promise<{ ok: true } | { ok: false; message: string }>
+  /** Names the field for assistive tech: "Edit summary". Optional. */
+  label?: string
+  /** Lets a parent hide the read-only text while the editor is open. Optional. */
+  onOpenChange?: (open: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [open, onOpenChange])
   const [text, setText] = useState(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   if (!open) {
     return (
-      <button type="button" className="btn" onClick={() => setOpen(true)}>
+      <button type="button" className="btn" aria-label={label ? `Edit ${label}` : undefined} onClick={() => setOpen(true)}>
         Edit
       </button>
     )
@@ -169,6 +178,7 @@ export function InlineEdit({
     <div style={{ width: '100%' }}>
       <textarea
         value={text}
+        aria-label={label}
         onChange={(e) => setText(e.target.value)}
         rows={Math.min(16, Math.max(5, text.split('\n').length + 2))}
         style={{
