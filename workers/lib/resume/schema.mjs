@@ -29,7 +29,7 @@ export const DRAFT_SCHEMA = {
 };
 
 /** Walk the schema by hand. Returns a path string for the first violation, or null. */
-function walk(schema, v, path) {
+export function walk(schema, v, path) {
   if (schema.enum) return schema.enum.includes(v) ? null : path;
   switch (schema.type) {
     case 'string':

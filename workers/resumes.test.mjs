@@ -359,3 +359,25 @@ test('draft order on equal score: newest first; logs carry a hash, never the id'
     assert.deepEqual(order, ['ashby:acme:newer', 'ashby:acme:older']);
   });
 });
+
+test('a manually dispatched job id comes from the event payload and is never printed', async () => {
+  await scenario({ jobs: 0 }, async ({ state, url }) => {
+    addJob(state, 'ashby:acme:manual', { score: 10 }); // below the bar: only an explicit request queues it
+    const dir = mkdtempSync(join(tmpdir(), 'ev-'));
+    const ev = join(dir, 'event.json');
+    writeFileSync(ev, JSON.stringify({ inputs: { job: 'ashby:acme:manual', dry_run: 'false' } }));
+    try {
+      const r = await exec(['--plan'], url, { GITHUB_EVENT_PATH: ev });
+      assert.equal(r.code, 0, r.out);
+      assert.match(r.gh, /todo=1/);
+      assert.equal(state.tables.resume_drafts.find((d) => d.job_id === 'ashby:acme:manual').status, 'queued');
+      assert.ok(!r.out.includes('manual') && !r.out.includes('acme'), 'the id is not in the log');
+      // JOB_ID in env no longer selects a job
+      const other = await exec(['--plan'], url, { JOB_ID: 'ashby:acme:nothing', GITHUB_EVENT_PATH: '' });
+      assert.equal(other.code, 0, other.out);
+      assert.match(other.out, /plan todo=/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

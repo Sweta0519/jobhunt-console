@@ -7,6 +7,7 @@ import { Logo } from '../../components/Logo'
 import { Editable } from '../Editable'
 import { reviewQueue } from '../queue'
 import { Diffed } from '../Diffed'
+import { ApplicationTab } from './ApplicationTab'
 import { Cv } from '../Cv'
 import { CvPreview } from '../CvPreview'
 import { carlito } from '../cvFont'
@@ -14,8 +15,15 @@ import { approveResume, rejectResume, requeueResume, editResumeField } from '../
 
 export const dynamic = 'force-dynamic'
 
-export default async function ResumeReview({ params }: { params: Promise<{ id: string }> }) {
+export default async function ResumeReview({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string }>
+}) {
   const { id } = await params
+  const tab = (await searchParams).tab === 'application' ? 'application' : 'cv'
   const { supabase } = await requirePrimary()
 
   const { data } = await supabase.from('resume_drafts').select('*').eq('id', id).maybeSingle()
@@ -117,6 +125,16 @@ export default async function ResumeReview({ params }: { params: Promise<{ id: s
           {(job.careers_url || job.url) && <ExternalLink href={(job.careers_url || job.url)!}>Open posting</ExternalLink>}
         </div>
 
+        <nav className="row resume-tabs" aria-label="Resume or application">
+          <Link className="chip rtab" href={`/resumes/${d.id}`} aria-current={tab === 'cv' ? 'page' : undefined}>Resume</Link>
+          <Link className="chip rtab" href={`/resumes/${d.id}?tab=application`} aria-current={tab === 'application' ? 'page' : undefined}>Application</Link>
+          <Link className="chip rtab" href="/resumes/answers">Saved answers</Link>
+        </nav>
+
+        {tab === 'application' ? (
+          <ApplicationTab supabase={supabase} resumeId={d.id} job={{ id: job.id, url: job.url }} latestVersion={latestRow?.version ?? null} />
+        ) : (
+        <>
         {doc && (
           <nav className="summary-strip" aria-label="Draft summary">
             {reqs.length > 0 && (
@@ -330,6 +348,8 @@ export default async function ResumeReview({ params }: { params: Promise<{ id: s
               })()}
             </div>
           </details>
+        )}
+        </>
         )}
 
       </main>

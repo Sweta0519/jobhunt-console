@@ -1,0 +1,42 @@
+{
+  "id": 1001,
+  "title": "Support Engineer",
+  "absolute_url": "https://boards.greenhouse.io/exampleco/jobs/1001",
+  "questions": [
+    { "label": "First Name", "required": true, "description": null, "fields": [{ "name": "first_name", "type": "input_text", "values": [] }] },
+    { "label": "Email", "required": true, "description": null, "fields": [{ "name": "email", "type": "input_text", "values": [] }] },
+    { "label": "Resume/CV", "required": true, "description": null, "fields": [
+      { "name": "resume", "type": "input_file", "values": [] },
+      { "name": "resume_text", "type": "textarea", "values": [] }
+    ] },
+    { "label": "Cover Letter", "required": false, "description": null, "fields": [
+      { "name": "cover_letter", "type": "input_file", "values": [] },
+      { "name": "cover_letter_text", "type": "textarea", "values": [] }
+    ] },
+    { "label": "Why do you want to work at Exampleco?", "required": true, "description": "<p>A few sentences are fine.</p>", "fields": [{ "name": "question_5001", "type": "textarea", "values": [] }] },
+    { "label": "Are you comfortable with on-call shifts?", "required": true, "description": null, "fields": [
+      { "name": "question_5002", "type": "multi_value_single_select", "values": [{ "label": "Yes", "value": 1 }, { "label": "No", "value": 0 }] }
+    ] },
+    { "label": "Which tools have you used?", "required": false, "description": null, "fields": [
+      { "name": "question_5003", "type": "multi_value_multi_select", "values": [{ "label": "Alpha", "value": 1 }, { "label": "Beta", "value": 2 }] }
+    ] },
+    { "label": "Hidden tracking", "required": false, "description": null, "fields": [{ "name": "tracking", "type": "input_hidden", "values": [] }] }
+  ],
+  "location_questions": [
+    { "label": "Location (City)", "required": true, "description": null, "fields": [{ "name": "job_application_location", "type": "input_text", "values": [] }] }
+  ],
+  "compliance": [
+    { "type": "eeoc", "description": "Voluntary self-identification", "questions": [
+      { "label": "Gender", "required": false, "description": null, "fields": [
+        { "name": "gender", "type": "multi_value_single_select", "values": [{ "label": "Option A", "value": 1 }, { "label": "Option B", "value": 2 }] }
+      ] }
+    ] }
+  ],
+  "demographic_questions": {
+    "header": "Demographic survey",
+    "questions": [
+      { "id": 9001, "label": "Which describes you?", "required": false, "type": "multi_value_single_select", "answer_options": [{ "id": 1, "label": "Choice 1" }, { "id": 2, "label": "Choice 2" }] }
+    ]
+  },
+  "data_compliance": [{ "type": "gdpr", "requires_consent": false }]
+}

@@ -4,7 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { requireOwner } from './lib/supabase'
 import { checkFacts } from '../workers/lib/resume/facts.mjs'
 import { splitOutsideParens } from '../workers/lib/resume/parse-master.mjs'
+import { checkEditedText } from '../workers/lib/apply/answer-facts.mjs'
+import { cleanBankValue } from '../workers/lib/apply/bank.mjs'
+import { parsePasted } from '../workers/lib/apply/paste.mjs'
+import { cleanBlock } from '../workers/lib/apply/schema.mjs'
 import type { ResumeDoc, MasterDoc, Requirement } from './lib/resumes'
+import type { Form } from './lib/applications'
 
 /**
  * Every write in the console goes through here.
@@ -20,7 +25,7 @@ import type { ResumeDoc, MasterDoc, Requirement } from './lib/resumes'
 const now = () => new Date().toISOString()
 
 function ok() {
-  for (const p of ['/', '/approvals', '/questions', '/outreach', '/posts', '/jobs', '/record', '/companies', '/companies/boards', '/resumes']) {
+  for (const p of ['/', '/approvals', '/questions', '/outreach', '/posts', '/jobs', '/record', '/companies', '/companies/boards', '/resumes', '/resumes/answers']) {
     revalidatePath(p)
   }
   return { ok: true as const }
@@ -424,4 +429,235 @@ export async function requestDraft(id: string) {
   if (!primary) return fail('Drafts are not set up for this account.')
   const { error } = await supabase.from('jobs').update({ draft_requested_at: now(), updated_at: now() }).eq('id', id)
   return error ? fail('Could not ask for a draft.') : ok()
+}
+
+/**
+ * Application answers. Same rules as the resume drafts: nothing is sent, the
+ * browser session carries every write (so row level security and the column
+ * grants apply), and every message is a fixed string, because a draft, a form
+ * label and a saved answer are personal data and a database error may quote them.
+ * Nothing from a draft or the answers bank is ever logged here.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const MAX_ANSWER = 5000
+const MAX_COVER = 6000
+
+/** The signed-in session, only if it is hers. */
+async function primarySession() {
+  const { supabase } = await requireOwner()
+  const { data: primary } = await supabase.rpc('is_primary')
+  return primary ? supabase : null
+}
+
+/** One saved answer. An empty value removes it. */
+export async function saveBankValue(key: string, value: string) {
+  const supabase = await primarySession()
+  if (!supabase) return fail('Saved answers are not set up for this account.')
+  const v = cleanBankValue(String(key), String(value ?? ''))
+  if (!v.ok) {
+    const msg: Record<string, string> = {
+      too_long: 'That is too long.',
+      yes_or_no: 'Answer yes or no.',
+      https_only: 'Use a link that starts with https://.',
+    }
+    return fail(msg[v.code] || 'That is not a saved answer.')
+  }
+  if (!v.value) {
+    const { error } = await supabase.from('answer_bank').delete().eq('key', key)
+    return error ? fail('Could not save that.') : ok()
+  }
+  // Update first, then insert: an upsert would also write the key column, which the browser may not.
+  const stamp = now()
+  const { data: updated, error } = await supabase
+    .from('answer_bank')
+    .update({ value: v.value, updated_at: stamp })
+    .eq('key', key)
+    .select('key')
+  if (error) return fail('Could not save that.')
+  if (!updated?.length) {
+    const { error: insertError } = await supabase.from('answer_bank').insert({ key, value: v.value, updated_at: stamp })
+    if (insertError) return fail('Could not save that.')
+  }
+  return ok()
+}
+
+/**
+ * Questions pasted from the real form. Checked here so a bad paste is refused at
+ * once, and parsed again by the worker, which never trusts that this ran. The text
+ * is never echoed back or logged.
+ */
+export async function submitPastedQuestions(formId: string, text: string, mode: string) {
+  const supabase = await primarySession()
+  if (!supabase) return fail('Forms are not set up for this account.')
+  if (!UUID.test(String(formId))) return fail('Unknown form.')
+  if (mode !== 'replace' && mode !== 'add') return fail('Unknown mode.')
+  const parsed = parsePasted(String(text ?? ''))
+  if (!parsed.ok) {
+    const msg: Record<string, string> = {
+      empty: 'Paste the questions first.',
+      too_long: 'That is too long. Paste a page at a time.',
+      no_text: 'That does not look like questions.',
+      no_questions: 'No questions found. Put each question on its own line.',
+    }
+    return fail(msg[parsed.code] || 'That paste could not be used.')
+  }
+  const { data: saved, error } = await supabase
+    .from('application_forms')
+    .update({
+      pasted_text: String(text).slice(0, 20000),
+      paste_mode: mode,
+      status: 'queued',
+      ...(mode === 'replace' ? { source: 'paste' } : {}),
+      reason: null,
+      updated_at: now(),
+    })
+    .eq('id', formId)
+    .in('status', ['read', 'needs_paste', 'failed', 'skipped', 'queued'])
+    .select('id')
+  if (error || !saved?.length) return fail('Could not save the questions.')
+  return ok()
+}
+
+/** "Read the form again". The next worker run picks it up. */
+export async function requestFormReread(formId: string) {
+  const supabase = await primarySession()
+  if (!supabase) return fail('Forms are not set up for this account.')
+  if (!UUID.test(String(formId))) return fail('Unknown form.')
+  const stamp = now()
+  const { data: saved, error } = await supabase
+    .from('application_forms')
+    .update({ reread_requested_at: stamp, status: 'queued', updated_at: stamp })
+    .eq('id', formId)
+    .in('status', ['read', 'needs_paste', 'failed', 'skipped'])
+    .select('id')
+  if (error || !saved?.length) return fail('Could not ask for another read.')
+  return ok()
+}
+
+/** Her own wording for one question. Flagged by the same fact check, never blocked. */
+export async function editAnswer(draftId: string, qId: string, text: string, optionIds: string[] = []) {
+  const supabase = await primarySession()
+  if (!supabase) return fail('Answers are not set up for this account.')
+  if (!UUID.test(String(draftId)) || !/^q_[0-9a-f]{8}(_\d)?$/.test(String(qId))) return fail('Unknown question.')
+  const value = cleanBlock(String(text ?? ''), MAX_ANSWER + 1)
+  if (value.length > MAX_ANSWER) return fail('That is too long.')
+
+  const { data: row, error: readError } = await supabase
+    .from('application_drafts')
+    .select('id,job_id,edits,fact_flags,master_version,status,updated_at')
+    .eq('id', draftId)
+    .maybeSingle()
+  if (readError || !row) return fail('That draft no longer exists.')
+  if (row.status !== 'draft') return fail('This draft cannot be edited now.')
+  const { data: formRow } = await supabase.from('application_forms').select('form').eq('job_id', row.job_id).maybeSingle()
+  const q = (formRow?.form as Form | null)?.questions.find((x) => x.id === qId)
+  if (!q) return fail('Unknown question.')
+  if (q.kind === 'file') return fail('Attach this on the application itself.')
+
+  const selectKind = q.kind === 'single_select' || q.kind === 'multi_select'
+  const ids = Array.isArray(optionIds) ? optionIds.map(String) : []
+  if (ids.some((id) => !q.options.some((o) => o.id === id)) || (q.kind === 'single_select' && ids.length > 1)) return fail('Pick from the choices on the form.')
+  if (!selectKind && ids.length) return fail('Pick from the choices on the form.')
+
+  const edits = { ...((row.edits as Record<string, unknown>) || {}) }
+  const flagRef = `a.${qId}`
+  let flags = ((row.fact_flags as { code: string; ref: string; token: string }[] | null) || []).filter((f) => f.ref !== flagRef)
+  if (!value && !ids.length) {
+    delete edits[qId] // empty reverts to the drafted answer
+  } else if (ids.length) {
+    edits[qId] = { option_ids: ids }
+  } else {
+    edits[qId] = { text: value }
+    const [{ data: master }, { data: job }, { data: desc }] = await Promise.all([
+      supabase.from('master_cv').select('doc').eq('version', row.master_version).maybeSingle(),
+      supabase.from('jobs').select('company,title').eq('id', row.job_id).maybeSingle(),
+      supabase.from('job_descriptions').select('description').eq('job_id', row.job_id).maybeSingle(),
+    ])
+    if (!master) return fail('Could not check this edit.')
+    const soft = checkEditedText({ text: value, label: q.label, master: master.doc, job: job || {}, description: desc?.description || '', charLimit: q.char_limit || 0 })
+    flags = [...flags, ...soft.map((f: { code: string; token: string }) => ({ code: f.code, ref: flagRef, token: f.token }))]
+  }
+
+  const stamp = now()
+  const { data: saved, error } = await supabase
+    .from('application_drafts')
+    .update({ edits, fact_flags: flags, edited_at: stamp, updated_at: stamp })
+    .eq('id', draftId)
+    .eq('updated_at', row.updated_at)
+    .eq('status', 'draft')
+    .select('id')
+  if (error) return fail('Could not save this edit.')
+  if (!saved?.length) return fail('This draft changed. Reload and try again.')
+  return ok()
+}
+
+/** Her own cover letter text. Plain text only: it is rendered as text nodes. */
+export async function editCoverLetter(draftId: string, text: string) {
+  const supabase = await primarySession()
+  if (!supabase) return fail('Answers are not set up for this account.')
+  if (!UUID.test(String(draftId))) return fail('Unknown draft.')
+  const value = cleanBlock(String(text ?? ''), MAX_COVER + 1)
+  if (!value) return fail('This cannot be empty.')
+  if (value.length > MAX_COVER) return fail('That is too long.')
+  const { data: row, error: readError } = await supabase
+    .from('application_drafts')
+    .select('id,job_id,fact_flags,master_version,status,updated_at')
+    .eq('id', draftId)
+    .maybeSingle()
+  if (readError || !row) return fail('That draft no longer exists.')
+  if (row.status !== 'draft') return fail('This draft cannot be edited now.')
+  const [{ data: master }, { data: job }, { data: desc }] = await Promise.all([
+    supabase.from('master_cv').select('doc').eq('version', row.master_version).maybeSingle(),
+    supabase.from('jobs').select('company,title').eq('id', row.job_id).maybeSingle(),
+    supabase.from('job_descriptions').select('description').eq('job_id', row.job_id).maybeSingle(),
+  ])
+  if (!master) return fail('Could not check this edit.')
+  const soft = checkEditedText({ text: value, master: master.doc, job: job || {}, description: desc?.description || '' })
+  const flags = [
+    ...((row.fact_flags as { code: string; ref: string; token: string }[] | null) || []).filter((f) => !String(f.ref).startsWith('cover.')),
+    ...soft.map((f: { code: string; token: string }) => ({ code: f.code, ref: 'cover.edit', token: f.token })),
+  ]
+  const stamp = now()
+  const { data: saved, error } = await supabase
+    .from('application_drafts')
+    .update({ cover_text: value, fact_flags: flags, edited_at: stamp, updated_at: stamp })
+    .eq('id', draftId)
+    .eq('updated_at', row.updated_at)
+    .eq('status', 'draft')
+    .select('id')
+  if (error) return fail('Could not save this edit.')
+  if (!saved?.length) return fail('This draft changed. Reload and try again.')
+  return ok()
+}
+
+/** "Draft a cover letter": the next worker run writes one and leaves the answers alone. */
+export async function requestCoverLetter(draftId: string) {
+  const supabase = await primarySession()
+  if (!supabase) return fail('Answers are not set up for this account.')
+  if (!UUID.test(String(draftId))) return fail('Unknown draft.')
+  const stamp = now()
+  const { data: saved, error } = await supabase
+    .from('application_drafts')
+    .update({ cover_requested_at: stamp, status: 'queued', updated_at: stamp })
+    .eq('id', draftId)
+    .in('status', ['draft', 'skipped', 'failed'])
+    .select('id')
+  if (error || !saved?.length) return fail('Could not ask for a cover letter.')
+  return ok()
+}
+
+/** "Draft again": the next worker run replaces the answers. The page confirms first when she has edits. */
+export async function redraftAnswers(draftId: string) {
+  const supabase = await primarySession()
+  if (!supabase) return fail('Answers are not set up for this account.')
+  if (!UUID.test(String(draftId))) return fail('Unknown draft.')
+  const stamp = now()
+  const { data: saved, error } = await supabase
+    .from('application_drafts')
+    .update({ status: 'queued', cover_requested_at: null, updated_at: stamp })
+    .eq('id', draftId)
+    .in('status', ['draft', 'skipped', 'failed', 'discarded'])
+    .select('id')
+  if (error || !saved?.length) return fail('Could not queue this draft.')
+  return ok()
 }

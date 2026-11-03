@@ -5,7 +5,7 @@
 import { createHmac } from 'node:crypto';
 
 let out = process.stdout.write.bind(process.stdout);
-const KEYS = new Set(['job','n','code','stage','todo','queued','skipped','used','cap','drafted','failed','left','stopped','hard','soft','attempt','version']);
+const KEYS = new Set(['job','n','code','stage','todo','queued','skipped','used','cap','drafted','failed','left','stopped','hard','soft','attempt','version','source','qs','fixed','drafted_q','need','blank','partial','read','pasted','drift','cover']);
 const SAFE = /^[a-z0-9_]{1,40}$/;
 // Job ids carry the company token, so only the hashId tag may be printed.
 const JOB_TAG = /^[0-9a-f]{10}$/;
@@ -14,9 +14,9 @@ const safeValue = (k, v) => (k === 'job' ? JOB_TAG.test(String(v)) : typeof v ==
 /** Test hook: redirect what event() and the crash handler print. */
 export function setOutput(fn) { out = fn; }
 
-export function installQuietConsole() {
+export function installQuietConsole(prefix = 'resumes') {
   for (const m of ['log','info','warn','error','debug','trace','dir','table']) console[m] = () => {};
-  const die = (e) => { out(`resumes failed code=${safeCode(e)}\n`); process.exit(1); };
+  const die = (e) => { out(`${prefix} failed code=${safeCode(e)}\n`); process.exit(1); };
   process.on('uncaughtException', die);
   process.on('unhandledRejection', die);
 }

@@ -36,3 +36,7 @@
 .cv-preview-fit { position: relative; overflow: hidden; }
 .cv-preview-sheet { width: 210mm; transform-origin: top left; }
 .cv-preview-sheet .cv-sheet { max-width: none; margin: 0; background: #fff; min-height: 297mm; }
+
+/* Cover letter body, inside the same .cv frame as the CV. */
+.cv .cover-re { font-size: 10.5pt; font-weight: 700; margin: 10px 0 8px; }
+.cv .cover-p { font-size: 10.5pt; line-height: 1.4; margin: 0 0 8px; overflow-wrap: anywhere; }

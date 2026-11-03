@@ -357,3 +357,14 @@ mark.diff-flag { background: var(--fail-soft); color: var(--fail); border-radius
 @media (max-width: 1099px) {
   .resume-side { position: static; max-height: none; overflow: visible; }
 }
+
+/* ---- resumes: application tab ---- */
+.pill {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 4px 12px;
+  border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); font-size: 13.5px;
+}
+.answer-card .answer-label { margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.answer-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14.5px; line-height: 1.55; margin-top: 6px; }
+.answer-wrap { overflow-wrap: anywhere; }
+.answer-flags { margin: 6px 0 0; padding-left: 18px; }
+.resume-tabs { margin: 0 0 12px; }

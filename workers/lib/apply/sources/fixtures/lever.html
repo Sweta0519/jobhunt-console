@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Synthetic apply page</title></head>
+<body>
+<!-- Invented company and questions. Not a copy of any real page. -->
+<form id="application-form" action="/exampleco/00000000-0000-4000-8000-000000000b01/apply" method="post">
+  <ul class="application-section">
+    <li class="application-question resume">
+      <label><div class="application-label">Resume/CV<span class="required">&#10033;</span></div>
+        <div class="application-field"><input type="file" name="resume"></div></label>
+    </li>
+    <li class="application-question">
+      <label><div class="application-label">Full name<span class="required">&#10033;</span></div>
+        <div class="application-field"><input type="text" name="name" required></div></label>
+    </li>
+    <li class="application-question">
+      <label><div class="application-label">Email<span class="required">&#10033;</span></div>
+        <div class="application-field"><input type="email" name="email" required></div></label>
+    </li>
+    <li class="application-question">
+      <label><div class="application-label">LinkedIn URL</div>
+        <div class="application-field"><input type="text" name="urls[LinkedIn]"></div></label>
+    </li>
+    <li class="application-question custom-question">
+      <label><div class="application-label">Why are you interested in Exampleco?<span class="required">&#10033;</span></div>
+        <div class="application-field"><textarea name="cards[c1][field0]" required></textarea></div></label>
+      <input type="hidden" name="cards[c1][baseTemplate]" value="{&quot;fields&quot;:[]}">
+    </li>
+    <li class="application-question custom-question">
+      <div class="application-label">Are you open to travel?</div>
+      <ul data-qa="multiple-choice">
+        <li><label><input type="radio" name="cards[c2][field0]" value="Yes"><span class="application-answer-alternative">Yes</span></label></li>
+        <li><label><input type="radio" name="cards[c2][field0]" value="No"><span class="application-answer-alternative">No</span></label></li>
+      </ul>
+    </li>
+    <li class="application-question custom-question">
+      <label><div class="application-label">Preferred start month</div>
+        <div class="application-field"><select name="cards[c3][field0]"><option value="">Select</option><option value="a">January</option><option value="b">February</option></select></div></label>
+    </li>
+    <li class="application-question">
+      <input type="text" name="honeypot" style="display:none">
+    </li>
+  </ul>
+  <div id="eeo-survey" class="eeo-section">
+    <ul class="application-section">
+      <li class="application-question custom-question">
+        <label><div class="application-label">Gender</div>
+          <div class="application-field"><select name="eeo[gender]"><option value="">Select</option><option>Option A</option></select></div></label>
+      </li>
+    </ul>
+  </div>
+</form>
+</body>
+</html>

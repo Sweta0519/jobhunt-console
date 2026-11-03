@@ -1,0 +1,29 @@
+{
+  "data": {
+    "jobPosting": {
+      "id": "00000000-0000-4000-8000-000000000a01",
+      "applicationForm": {
+        "sections": [
+          {
+            "title": "Application",
+            "fieldEntries": [
+              { "id": "e1", "isRequired": true, "isHidden": false, "descriptionHtml": null, "field": { "type": "String", "path": "_systemfield_name", "title": "Name" } },
+              { "id": "e2", "isRequired": true, "isHidden": false, "descriptionHtml": null, "field": { "type": "Email", "path": "_systemfield_email", "title": "Email" } },
+              { "id": "e3", "isRequired": true, "isHidden": false, "descriptionHtml": null, "field": { "type": "File", "path": "_systemfield_resume", "title": "Resume" } },
+              { "id": "e4", "isRequired": false, "isHidden": false, "descriptionHtml": "<p>Keep it short.</p>", "field": { "type": "LongText", "path": "q_motivation", "title": "Why this role?" } },
+              { "id": "e5", "isRequired": true, "isHidden": false, "descriptionHtml": null, "field": { "type": "ValueSelect", "path": "q_team", "title": "Preferred team", "selectableValues": [{ "label": "Platform", "value": "p" }, { "label": "Support", "value": "s" }] } },
+              { "id": "e6", "isRequired": false, "isHidden": false, "descriptionHtml": null, "field": { "type": "Boolean", "path": "q_bool", "title": "Can you work in the office twice a week?" } },
+              { "id": "e7", "isRequired": false, "isHidden": true, "descriptionHtml": null, "field": { "type": "String", "path": "q_trap", "title": "Leave this empty" } }
+            ]
+          },
+          {
+            "title": "Voluntary demographic survey",
+            "fieldEntries": [
+              { "id": "e8", "isRequired": false, "isHidden": false, "descriptionHtml": null, "field": { "type": "ValueSelect", "path": "q_gender", "title": "Which describes you?", "selectableValues": [{ "label": "Choice 1", "value": "1" }] } }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

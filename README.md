@@ -200,6 +200,63 @@ sent or submitted anywhere.
   Carlito (same metrics as Calibri); the browser saves the PDF. Nothing is
   stored.
 
+## Application answers
+
+For each role that has a ready resume draft, `workers/applications.mjs` reads the
+application form and drafts answers and, when the form asks for one, a cover
+letter, for her to read, edit and copy. Nothing is submitted. She submits on the
+employer's site herself, and `setJobStatus` still records "applied".
+
+- **Tabs**: `/resumes/<id>?tab=application` shows the questions in form order,
+  each with a badge, the text or the chosen option, Edit and Copy. The cover
+  letter has its own card and a PDF at `/resumes/<id>/cover`. `/resumes/answers`
+  holds her saved answers.
+- **Rules first, model second.** `workers/lib/apply/classify.mjs` decides what it
+  can without Claude: demographic, consent and sensitive questions are left blank
+  for her, an AI-use question and anything about how long she used something need
+  her, personal facts map to a saved-answer key, and a work-rights question is
+  mapped only for Germany and the EU. Only the rest goes to Claude, which has no
+  tools, answers with ids, and cites the CV items it used.
+- **Saved answers never reach a worker.** The `answer_bank` table has no grant for
+  the service role (migration 0017 revokes it on purpose). A draft stores a key
+  such as `notice_period`; the page joins the value in, in her own session.
+  Values are plain text under row level security. Salary is one free text value
+  (a range with a currency is fine) and can be edited per job. "Fill from my CV"
+  fills empty inputs only and saves nothing until she presses Save.
+- **Fact check**: `workers/lib/apply/answer-facts.mjs` rejects an added number,
+  date, link, contact detail, tool the CV does not name, or a first-person claim
+  taken from the posting. One bad answer never loses the others: it becomes a
+  question for her. Her own edits get warnings only.
+- **English only** for now, also on German forms.
+- **Forms** are read from the Greenhouse, Ashby and Lever public pages, on fixed
+  hosts, with no redirects and a size cap (Lever also checks `robots.txt` and keeps
+  a 1.1 second gap). Anything else, a failed read or a form that may be incomplete
+  is handled by pasting the questions: one per line, choices below with `- `, a
+  trailing `*` for required. Pasting more later adds to the form. The Ashby field
+  shape and the Lever page markup were built from fixtures, not checked against
+  live pages, so a first dry run per source is part of going live.
+- **Runs** in `.github/workflows/applications.yml`, started by pg_cron (migration
+  0017) every 15 minutes but only when something is waiting, with a GitHub
+  schedule as a second chance. Two jobs on two machines: `plan` reads forms and
+  has the database key, `draft` has the database key and the Claude token. There
+  is no job input, because Actions prints a step's `env` block.
+- **Config**: `settings.application_config`. No row, or `enabled: false`, means no
+  work.
+
+  ```json
+  { "enabled": true, "daily_cap": 5, "hard_cap": 12, "stop_at_utilization": 0.70,
+    "model": "sonnet", "sources": { "greenhouse": true, "ashby": true, "lever": true } }
+  ```
+
+  `daily_cap` counts drafts attempted today. A cover letter or redraft she asks
+  for jumps the queue but counts against `hard_cap`. Drafting stops at 70% usage,
+  below the resume worker's 85%, so resumes keep priority. A source set to `false`
+  sends its forms to paste with no deploy.
+- **Leak scan**: `node scripts/check-no-cv-leak.mjs --private-strings <file>` and
+  `--drafts` print counts only, against tracked files or a downloaded log.
+- **Not built yet**: a headless browser reader for other employers' forms.
+  `browser_mode` in the config is reserved and ignored.
+
 ## Checks
 
 ```bash

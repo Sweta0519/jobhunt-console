@@ -8,12 +8,12 @@
 const NUMBER_RE = /(?<![\p{L}\d.])\d+(?:[.,]\d+)*(?:%|\+|[kKmM](?!\p{L}))?(?![\p{L}\d])/gu;
 const WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}+#]*/gu;
 const TLDS = 'com|io|org|net|dev|app|ai|co|de|eu';
-const NUMBER_WORDS = /\b(dozens?|hundreds?|thousands?|millions?|billions?|twice|doubled|tripled|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:-\w+)?|\w+ percent|percent)\b/gi;
-const MONTHS = /\b(January|February|March|April|June|July|August|September|October|November|December)\b|\b(May)\s+(?:19|20)\d{2}\b|\b(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b\.?\s+(?:19|20)\d{2}/g;
-const INJECTION = /ignore (all|any|previous|prior)|system prompt|as an ai|language model|llm|ai (screener|assistant|tool)|\bassistant:/i;
-const MARKUP = /<[a-z!/]|\]\(|\{\{|javascript:|[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/i;
+export const NUMBER_WORDS = /\b(dozens?|hundreds?|thousands?|millions?|billions?|twice|doubled|tripled|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:-\w+)?|\w+ percent|percent)\b/gi;
+export const MONTHS = /\b(January|February|March|April|June|July|August|September|October|November|December)\b|\b(May)\s+(?:19|20)\d{2}\b|\b(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b\.?\s+(?:19|20)\d{2}/g;
+export const INJECTION = /ignore (all|any|previous|prior)|system prompt|as an ai|language model|llm|ai (screener|assistant|tool)|\bassistant:/i;
+export const MARKUP = /<[a-z!/]|\]\(|\{\{|javascript:|[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/i;
 
-const STOP = new Set(('about above across after again also always another any are around because been before being between both '
+export const STOP = new Set(('about above across after again also always another any are around because been before being between both '
   + 'bring build built can come could does doing done down each either else even ever every from give given going good great have '
   + 'having help here high into just keep know large like long look made make many may more most much must need never next only '
   + 'other over part people place real same should since some such take than that their them then there these they thing this '
@@ -21,7 +21,7 @@ const STOP = new Set(('about above across after again also always another any ar
   + 'work working works would your yours you our ours role team teams company companies job jobs experience years year day days '
   + 'new strong ability skills skill plus including include includes ensure related variety wide range based able').split(' '));
 
-const words = (s) => String(s ?? '').match(WORD_RE) || [];
+export const words = (s) => String(s ?? '').match(WORD_RE) || [];
 export const stem = (w) => {
   const x = w.toLowerCase();
   const y = x.replace(/(ing|ed|es|s|ly)$/, '');
@@ -91,7 +91,7 @@ function fields(doc) {
   return f.filter((x) => typeof x.text === 'string');
 }
 
-function masterIndex(master) {
+export function masterIndex(master) {
   const src = new Map();   // id -> text
   const ids = new Set();
   for (const g of master.skills || []) { ids.add(g.id); src.set(g.id, (g.items || []).join(' ')); }

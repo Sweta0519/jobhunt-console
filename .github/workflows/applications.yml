@@ -1,0 +1,97 @@
+name: applications
+
+# Reads the application form of a job that has a ready CV draft and drafts answers
+# and a cover letter for her review. It never submits or sends anything.
+#
+# This repository and its logs are public. Nothing here may print a form label,
+# an answer, a cover letter, CV text or Claude's output: the worker replaces
+# console.* and logs only a keyed hash of each job id (ids carry the company
+# token) and counts. Never add upload-artifact, tee, a pull_request trigger or
+# --debug to this file. There is no job input on purpose: Actions prints a step's
+# env block. workers/applications.workflow.test.mjs enforces this.
+#
+# Two jobs on two machines. plan reads forms and has the database key but no
+# Claude token. draft has both and runs no npm package. A browser reader, if one
+# is ever added, belongs in a third job that references neither secret.
+#
+# Fired by pg_cron (migration 0017). The schedule below is GitHub's best-effort
+# second chance; the worker is idempotent and the daily cap lives in the database.
+
+on:
+  schedule:
+    - cron: '20 8,15 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Call Claude and validate, write nothing'
+        type: boolean
+        default: false
+
+concurrency:
+  group: applications
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      todo: ${{ steps.plan.outputs.todo }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No npm ci: the worker uses only Node built-ins, so no installed package
+      # ever runs beside the secrets below.
+
+      - name: Sync the queue and read forms
+        id: plan
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node workers/applications.mjs --plan
+
+  draft:
+    needs: plan
+    if: needs.plan.outputs.todo != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Claude Code (pinned, verified)
+        env:
+          CC_VERSION: '2.1.316'
+          CC_SHA512: 'RQDM6N285IjNKcmlPRriayNzpTkEJreAw5/vBU+V0R3qljkQ5z6/pSbzcVUAXvasoOlvub0RIma3NWvSuZA8Cg=='
+        run: |
+          mkdir -p "$RUNNER_TEMP/cc"
+          cd "$RUNNER_TEMP/cc"
+          curl -fsSL -o cc.tgz "https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-${CC_VERSION}.tgz"
+          test "$(openssl dgst -sha512 -binary cc.tgz | base64 -w0)" = "$CC_SHA512"
+          tar xzf cc.tgz package/claude
+          chmod +x package/claude
+          rm cc.tgz
+          package/claude --version
+
+      - name: Draft
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node workers/applications.mjs --claude-bin "$RUNNER_TEMP/cc/package/claude"

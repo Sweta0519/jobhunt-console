@@ -46,6 +46,17 @@ test('no ${{ inputs }} is interpolated into a run: block', () => {
   }
 });
 
+test('the dispatched job id is never passed through env or printed: the worker reads the event file', () => {
+  // Actions prints a step's env block. Only dry_run (a boolean) may come from inputs.
+  const used = [...code.matchAll(/\$\{\{\s*(inputs|github\.event)[^}]*\}\}/g)].map((m) => m[0].replace(/\s+/g, ' '));
+  assert.deepEqual([...new Set(used)], ['${{ inputs.dry_run }}']);
+  assert.ok(!/\bJOB_ID\b/.test(code), 'resumes.yml sets JOB_ID');
+  const worker = read('workers/resumes.mjs');
+  assert.ok(!/process\.env\.JOB_ID/.test(worker), 'the worker reads the job id from env');
+  assert.match(worker, /process\.env\.GITHUB_EVENT_PATH/);
+  assert.match(worker, /inputs\?\.job/);
+});
+
 test('permissions are contents: read and nothing else', () => {
   const m = /^permissions:\n((?:[ \t]+\S.*\n)+)/m.exec(code + '\n');
   assert.ok(m, 'a top-level permissions block exists');

@@ -4,8 +4,10 @@
 //   node workers/resumes.mjs --plan                  queue sync, prints todo=N to $GITHUB_OUTPUT
 //   node workers/resumes.mjs --claude-bin <path>     draft what is queued
 //
-// Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JOB_ID (optional), DRY_RUN,
-//      CLAUDE_CODE_OAUTH_TOKEN (draft step only).
+// Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, DRY_RUN, CLAUDE_CODE_OAUTH_TOKEN
+//      (draft step only). One job comes from the workflow_dispatch event payload
+//      (GITHUB_EVENT_PATH, inputs.job) or --job <id> on her PC, never from env:
+//      Actions prints a step's env block and this log is public.
 //
 // This repository and its Actions logs are public. console.* is replaced before
 // anything else runs, and the only output is event(): job hashes and counts.
@@ -17,7 +19,7 @@
 // Hers only: the owner is the primary owner, always. The token that drafts for
 // her must never draft for the second person.
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { primaryOwner, forOwner, parseArgs } from './lib/db.mjs';
 import { installQuietConsole, event, safeCode, hashId } from './lib/resume/safelog.mjs';
@@ -362,10 +364,22 @@ async function draft(db, { dry, jobId, bin, binArgs }) {
   }
 }
 
+/** The manually dispatched job id, read from the event file so it is never printed. */
+function requestedJob(args) {
+  if (typeof args.job === 'string') return args.job.trim();
+  const path = process.env.GITHUB_EVENT_PATH;
+  if (!path) return '';
+  try {
+    return String(JSON.parse(readFileSync(path, 'utf8'))?.inputs?.job ?? '').trim();
+  } catch {
+    return '';
+  }
+}
+
 async function main() {
   const args = parseArgs();
   const dry = process.env.DRY_RUN === 'true';
-  const jobId = (process.env.JOB_ID || '').trim();
+  const jobId = requestedJob(args);
   const owner = await primaryOwner(); // hers only, ever
   const db = forOwner(owner.id);
   if (args.plan) {

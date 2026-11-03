@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Synthetic apply page with sections</title></head>
+<body>
+<!-- Invented company and questions. Not a copy of any real page. Reproduces the
+     structure that broke the parser: a hidden JSON input that says "required", a
+     question that is a div (not an li) holding a long select, and a survey block. -->
+<form id="application-form" method="POST">
+  <div class="section page-centered application-form"><h4>Submit your application</h4>
+    <ul>
+      <li class="application-question"><label><div class="application-label">Full name<span class="required">&#10033;</span></div>
+        <div class="application-field"><input type="text" name="name" required></div></label></li>
+    </ul>
+  </div>
+  <div class="section page-centered application-form"><h4>Links</h4>
+    <ul>
+      <li class="application-question"><label><div class="application-label">Other website</div>
+        <div class="application-field"><input type="text" name="urls[Other]"></div></label></li>
+    </ul>
+  </div>
+  <div class="section page-centered application-form"><h4>Earlier work here</h4>
+    <input type="hidden" name="cards[k1][baseTemplate]" value="{&quot;fields&quot;:[{&quot;text&quot;:&quot;Did you work here before?&quot;,&quot;required&quot;:true}]}">
+    <ul>
+      <li class="application-question custom-question"><div>
+        <div class="application-label full-width"><div class="text">Did you work here before?<span class="required">&#10033;</span></div></div>
+        <div class="application-field required-field"><ul>
+          <li><label><input type="checkbox" name="cards[k1][field0]" value="No"><span class="application-answer-alternative">No</span></label></li>
+          <li><label><input type="checkbox" name="cards[k1][field0]" value="Yes"><span class="application-answer-alternative">Yes</span></label></li>
+        </ul></div></div></li>
+    </ul>
+  </div>
+  <div class="section page-centered application-form"><hr><h4>Demographic Survey</h4>
+    <div class="application-question"><label><div class="application-label">Where do you live?</div>
+      <div class="application-field"><select name="region"><option value="">Select</option><option>Country A</option><option>Country B</option><option>Country C</option></select></div></label></div>
+  </div>
+  <div class="section page-centered application-form hidden"><h4>Questions for Exampleco</h4>
+    <input type="hidden" name="surveysResponses[s1][baseTemplate]" value="{&quot;required&quot;:true}">
+    <ul>
+      <li class="application-question"><div class="application-label full-width"><div class="text">Which gender do you identify with?</div></div>
+        <div class="application-field"><ul>
+          <li><label><input type="radio" name="surveysResponses[s1][responses][field0]" value="A"><span class="application-answer-alternative">Option A</span></label></li>
+          <li><label><input type="radio" name="surveysResponses[s1][responses][field0]" value="B"><span class="application-answer-alternative">Option B</span></label></li>
+        </ul></div></li>
+    </ul>
+  </div>
+</form>
+</body>
+</html>

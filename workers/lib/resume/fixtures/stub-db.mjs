@@ -70,6 +70,8 @@ export async function startStub(state) {
         else {
           row = { ...b };
           if (table === 'resume_drafts') Object.assign(row, { attempts: 0, generation: 0, ...b, id: b.id || randomUUID() });
+          else if (table === 'application_drafts') Object.assign(row, { attempts: 0, generation: 0, edits: {}, answers: null, cover_requested_at: null, not_before: null, last_attempt_at: null, ...b, id: b.id || randomUUID() });
+          else if (table === 'application_forms') Object.assign(row, { attempts: 0, form: null, pasted_text: null, reread_requested_at: null, ...b, id: b.id || randomUUID() });
           else if (table === 'runs') row.id = randomUUID();
           rows.push(row);
         }

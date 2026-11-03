@@ -7,6 +7,10 @@ name: resumes
 # a keyed hash of each job id (ids carry the company token) and counts. Never add upload-artifact, tee, a pull_request trigger
 # or --debug to this file. workers/resumes.workflow.test.mjs enforces this.
 #
+# The optional job input is read by the worker from the event payload
+# (GITHUB_EVENT_PATH). Never pass it through env: or a run: line, because Actions
+# prints both and a job id carries the company token.
+#
 # Fired by pg_cron (migration 0013). The schedule below is GitHub's best-effort
 # second chance; the worker is idempotent and the daily cap lives in the database.
 
@@ -51,7 +55,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          JOB_ID: ${{ inputs.job }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: node workers/resumes.mjs --plan
 
@@ -76,6 +79,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          JOB_ID: ${{ inputs.job }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: node workers/resumes.mjs --claude-bin "$RUNNER_TEMP/cc/package/claude"

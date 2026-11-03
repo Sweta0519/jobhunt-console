@@ -45,6 +45,14 @@ export function StatusBadge({ status }: { status: string }) {
     req_partial: { tone: 'wait', glyph: '◷', label: 'Partly' },
     req_gap: { tone: 'fail', glyph: '▲', label: 'Gap' },
 
+    // application answers: teal stays reserved for what really happened, so none of these use it
+    ans_ready: { tone: 'inert', glyph: '✓', label: 'Ready' },
+    ans_edited: { tone: 'inert', glyph: '✎', label: 'Edited' },
+    ans_needs_you: { tone: 'fail', glyph: '▲', label: 'Needs you' },
+    ans_blank: { tone: 'inert', glyph: '·', label: 'Left for you' },
+    ans_upload: { tone: 'inert', glyph: '↑', label: 'Attach' },
+    form_partial: { tone: 'wait', glyph: '◷', label: 'May be incomplete' },
+
     failed: { tone: 'fail', glyph: '▲', label: 'Failed' },
 
     skipped: { tone: 'inert', glyph: '–', label: 'Skipped' },
