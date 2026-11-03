@@ -23,7 +23,7 @@ export default async function ResumeReview({ params }: { params: Promise<{ id: s
   const d = data as ResumeDraft
 
   const [{ data: job }, { data: desc }, { data: masterRow }, { data: latestRow }, queue] = await Promise.all([
-    supabase.from('jobs').select('id,title,company,company_slug,url,score,closed').eq('id', d.job_id).maybeSingle(),
+    supabase.from('jobs').select('id,title,company,company_slug,url,careers_url,score,closed').eq('id', d.job_id).maybeSingle(),
     supabase.from('job_descriptions').select('description,sha').eq('job_id', d.job_id).maybeSingle(),
     supabase.from('master_cv').select('doc').eq('version', d.master_version).maybeSingle(),
     supabase.from('master_cv').select('version').order('version', { ascending: false }).limit(1).maybeSingle(),
@@ -114,7 +114,7 @@ export default async function ResumeReview({ params }: { params: Promise<{ id: s
           <span className="card-meta">{job.company}</span>
           <StatusBadge status={d.status === 'draft' ? 'draft_ready' : d.status} />
           {job.closed && <span className="chip">closed</span>}
-          {job.url && <ExternalLink href={job.url}>Open posting</ExternalLink>}
+          {(job.careers_url || job.url) && <ExternalLink href={(job.careers_url || job.url)!}>Open posting</ExternalLink>}
         </div>
 
         {doc && (

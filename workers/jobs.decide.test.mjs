@@ -2,7 +2,8 @@
 // are invented.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RELEVANT, CLEARLY_NOT, withDefaults, processBoard, ingestFeed, newState, BOARDS } from './jobs.mjs';
+import { RELEVANT, CLEARLY_NOT, slugifyTitle, careersUrlFor, withDefaults, processBoard, ingestFeed, newState, BOARDS } from './jobs.mjs';
+import { urlKeyOf } from './lib/boards/policy.mjs';
 import { parsePersonio, clearBoardMemo, fetchBoard } from './lib/boards/fetch.mjs';
 import feedHimalayas from './lib/feeds/himalayas.mjs';
 import feedJobicy from './lib/feeds/jobicy.mjs';
@@ -282,4 +283,32 @@ test('Greenhouse uses first_published, Ashby drops unlisted postings', async () 
       assert.deepEqual((await BOARDS.ashby('acme')).map((x) => x.title), ['Listed']);
     }
   );
+});
+
+test('slugifyTitle trims a leading space, lowercases, hyphenates', () => {
+  assert.equal(slugifyTitle(' Technical Support Engineer'), 'technical-support-engineer');
+  assert.equal(slugifyTitle('  Support Eng. (EMEA) / Remote  '), 'support-eng-emea-remote');
+});
+
+test('careersUrlFor needs an https template with {slug}', () => {
+  assert.equal(careersUrlFor('https://example.invalid/careers/{slug}', ' Support Engineer'), 'https://example.invalid/careers/support-engineer');
+  assert.equal(careersUrlFor(null, 'Support Engineer'), null);
+  assert.equal(careersUrlFor('http://example.invalid/{slug}', 'Support Engineer'), null);
+  assert.equal(careersUrlFor('https://example.invalid/careers', 'Support Engineer'), null);
+});
+
+test('careers_url is written only when the company has a template; url and dedupe key stay the board link', () => {
+  const withTpl = { ...company, careers_url_template: 'https://example.invalid/careers/{slug}' };
+  const a = state();
+  processBoard(a, withTpl, [posting({ title: ' Technical Support Engineer' })]);
+  assert.equal(a.rows[0].careers_url, 'https://example.invalid/careers/technical-support-engineer');
+  assert.equal(a.rows[0].url, 'https://example.invalid/j/1');
+  assert.ok(a.boardKeys.has(`u:${urlKeyOf('https://example.invalid/j/1')}`));
+  const b = state();
+  processBoard(b, company, [posting()]);
+  assert.equal(b.rows[0].careers_url, null);
+  // A stored careers_url survives a poll for a company without a template.
+  const c = state([stored({ careers_url: 'https://example.invalid/hand/set' })]);
+  processBoard(c, baselined, [posting()]);
+  assert.equal(c.rows[0].careers_url, 'https://example.invalid/hand/set');
 });

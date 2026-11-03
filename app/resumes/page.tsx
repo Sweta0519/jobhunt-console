@@ -14,7 +14,7 @@ type Row = {
 }
 type JobLite = {
   id: string; company: string; company_slug: string | null; title: string
-  score: number | null; closed: boolean; status: string; url: string | null
+  score: number | null; closed: boolean; status: string; url: string | null; careers_url?: string | null
 }
 
 const VIEWS = ['review', 'approved', 'waiting', 'other'] as const
@@ -38,7 +38,7 @@ export default async function Resumes({ searchParams }: { searchParams: Promise<
   const drafts = (rows as Row[]) || []
   const ids = [...new Set(drafts.map((d) => d.job_id))]
   const { data: jobRows } = ids.length
-    ? await supabase.from('jobs').select('id,company,company_slug,title,score,closed,status,url').in('id', ids)
+    ? await supabase.from('jobs').select('id,company,company_slug,title,score,closed,status,url,careers_url').in('id', ids)
     : { data: [] as JobLite[] }
   const jobs = new Map(((jobRows as JobLite[]) || []).map((j) => [j.id, j]))
   const logos = new Map((cos || []).map((c) => [c.slug as string, c.logo_path as string | null]))
@@ -126,10 +126,10 @@ export default async function Resumes({ searchParams }: { searchParams: Promise<
                       {d.status === 'discarded' ? 'You can draft this one again.' : reasonCopy(d.reason)}
                     </p>
                   )}
-                  {view === 'other' && (again || (j.url && thin)) && (
+                  {view === 'other' && (again || ((j.careers_url || j.url) && thin)) && (
                     <div className="row card-actions" style={{ marginTop: 10 }}>
-                      {j.url && thin && (
-                        <a className="btn" href={j.url} target="_blank" rel="noopener noreferrer">Open posting</a>
+                      {(j.careers_url || j.url) && thin && (
+                        <a className="btn" href={(j.careers_url || j.url)!} target="_blank" rel="noopener noreferrer">Open posting</a>
                       )}
                       {again && <ActionButton action={requeueResume.bind(null, d.id)}>Draft again</ActionButton>}
                     </div>

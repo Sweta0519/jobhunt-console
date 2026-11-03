@@ -34,7 +34,7 @@ export default async function OutreachDetail({ params }: { params: Promise<{ id:
       ? supabase.from('people').select('headline,position,connected_on,relationship').eq('id', o.person_id).maybeSingle()
       : Promise.resolve({ data: null }),
     o.job_id
-      ? supabase.from('jobs').select('title,url,location,score').eq('id', o.job_id).maybeSingle()
+      ? supabase.from('jobs').select('title,url,careers_url,location,score').eq('id', o.job_id).maybeSingle()
       : Promise.resolve({ data: null }),
   ])
 
@@ -93,8 +93,8 @@ export default async function OutreachDetail({ params }: { params: Promise<{ id:
             <h2>The role</h2>
             <div className="card">
               <p className="card-title" style={{ marginBottom: 2 }}>
-                {job.url ? (
-                  <a href={job.url} target="_blank" rel="noopener noreferrer">
+                {job.careers_url || job.url ? (
+                  <a href={job.careers_url || job.url!} target="_blank" rel="noopener noreferrer">
                     {job.title}
                   </a>
                 ) : (

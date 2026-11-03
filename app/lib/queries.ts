@@ -8,7 +8,7 @@ export type Question = {
   note: string | null; starred: boolean
 }
 export type Job = {
-  id: string; company: string; company_slug: string | null; title: string; url: string | null
+  id: string; company: string; company_slug: string | null; title: string; url: string | null; careers_url?: string | null
   location: string | null; score: number | null; score_notes: Record<string, string> | null
   german_required: boolean; eligible: boolean | null; status: string; closed: boolean
   first_seen_at: string; posted_date: string | null

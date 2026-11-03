@@ -12,7 +12,7 @@ import { setPrepStatus } from '../../actions'
 export const dynamic = 'force-dynamic'
 
 type JobRow = {
-  id: string; title: string; url: string | null; location: string | null; status: string
+  id: string; title: string; url: string | null; careers_url?: string | null; location: string | null; status: string
   score: number | null; applied_at: string | null; first_seen_at: string; closed: boolean
 }
 type Contribution = { id: string; kind: string; title: string; url: string; happened_at: string }
@@ -39,7 +39,7 @@ export default async function Company({ params }: { params: Promise<{ slug: stri
       supabase.from('companies').select('slug,name,logo_path,domain').eq('slug', slug).maybeSingle(),
       supabase
         .from('jobs')
-        .select('id,title,url,location,status,score,applied_at,first_seen_at,closed')
+        .select('id,title,url,careers_url,location,status,score,applied_at,first_seen_at,closed')
         .eq('company_slug', slug)
         .order('applied_at', { ascending: false, nullsFirst: false })
         .order('score', { ascending: false, nullsFirst: false }),
@@ -169,7 +169,7 @@ export default async function Company({ params }: { params: Promise<{ slug: stri
               <article key={j.id} className="card">
                 <div className="spread">
                   <h3 className="card-title">
-                    {j.url ? <ExternalLink href={j.url}>{j.title}</ExternalLink> : j.title}
+                    {j.careers_url || j.url ? <ExternalLink href={(j.careers_url || j.url)!}>{j.title}</ExternalLink> : j.title}
                   </h3>
                   <StatusBadge status={j.closed && j.status === 'found' ? 'closed' : j.status} />
                 </div>

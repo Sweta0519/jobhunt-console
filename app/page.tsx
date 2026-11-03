@@ -215,7 +215,7 @@ export default async function Today() {
                 <div className="spread">
                   <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <Logo name={j.company} slug={j.company_slug} path={logos.get(j.company_slug ?? '')} size={24} />
-                    {j.url ? <ExternalLink href={j.url}>{j.title}</ExternalLink> : j.title}
+                    {j.careers_url || j.url ? <ExternalLink href={(j.careers_url || j.url)!}>{j.title}</ExternalLink> : j.title}
                   </h3>
                   <span className="score num">{j.score ?? '—'}</span>
                 </div>

@@ -187,6 +187,21 @@ export async function storeDescriptions(db, rows, fullById, { resolve = resolveF
 const APPLIED = ['applied', 'shortlisted', 'interview', 'rejected'];
 const FEED_PREFIXES = FEEDS.map((f) => f.idPrefix);
 const isFeedId = (id) => FEED_PREFIXES.some((p) => String(id).startsWith(`${p}:`));
+/** Job title as a URL slug: lowercase, trimmed, non-alphanumerics to hyphens. */
+export const slugifyTitle = (t) => String(t || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+/**
+ * The employer's own page for a posting, from the company's template. Display
+ * only, never fetched: a wrong slug lands on the employer's generic careers page.
+ * Needs an https template with {slug}; anything else gives null.
+ */
+export function careersUrlFor(template, title) {
+  if (typeof template !== 'string' || !template.startsWith('https://') || !template.includes('{slug}')) return null;
+  const slug = slugifyTitle(title);
+  if (!slug) return null;
+  try { return new URL(template.split('{slug}').join(slug)).href; } catch { return null; }
+}
+
 export const coTitleKey = (companyName, title) => `${core(companyName)}|${normTitle(title)}`;
 
 /**
@@ -242,6 +257,8 @@ export function decideRow(ctx, { id, source, company, posting: p, prev, twin, dr
     company: company.name,
     title,
     url: p.url,
+    // Display link to the employer's own page. A hand-set value survives when the company has no template.
+    careers_url: careersUrlFor(company.careers_url_template, title) ?? prev?.careers_url ?? null,
     location: p.location || null,
     workplace_type: p.remote !== undefined ? (p.remote ? 'Remote' : null) : /remote/i.test(p.location || '') ? 'Remote' : null,
     posted_date: p.postedAt ? p.postedAt.slice(0, 10) : null,
@@ -305,7 +322,7 @@ export function processBoard(st, c, postings) {
     const twinRow = (u && st.byUrl.get(u)) || st.byCo.get(co);
     const twin = twinRow && twinRow.id !== id && isFeedId(twinRow.id) ? twinRow : null;
     const d = decideRow(st.ctx, {
-      id, source: c.board_kind, company: { slug: c.slug, name: c.name }, posting: p,
+      id, source: c.board_kind, company: { slug: c.slug, name: c.name, careers_url_template: c.careers_url_template }, posting: p,
       prev: st.byId.get(id), twin, drafted: st.drafted, appliedKeys: st.appliedKeys, firstRun,
     });
     if (d.skip) { if (d.skip === 'ineligible') st.counts.skippedIneligible++; continue; }
@@ -444,7 +461,7 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
 
   let companies = await db.selectAll(
     'companies',
-    '?select=slug,name,board_kind,board_token,board_baselined_at,board_fail_count&board_token=not.is.null&board_kind=not.is.null&board_block=is.null' +
+    '?select=slug,name,careers_url_template,board_kind,board_token,board_baselined_at,board_fail_count&board_token=not.is.null&board_kind=not.is.null&board_block=is.null' +
       (args['only-new-boards'] ? '&board_baselined_at=is.null' : '') +
       '&order=slug.asc'
   );
@@ -461,7 +478,7 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
   // and a row missing here would have its status reset to found.
   const known = await db.selectAll(
     'jobs',
-    '?select=id,url,company_slug,company,title,status,applied_at,notes,backlog,source,closed,last_seen_at&order=id.asc'
+    '?select=id,url,company_slug,company,title,status,applied_at,notes,backlog,source,closed,last_seen_at,careers_url&order=id.asc'
   );
   const drafted = primary
     ? new Set((await db.select('resume_drafts', '?select=job_id&status=in.(draft,approved)')).map((d) => d.job_id))

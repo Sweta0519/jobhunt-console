@@ -92,3 +92,19 @@ test('in Actions the poll prints no company, slug, token, title, owner label or 
     await stub.close();
   }
 });
+
+test('poll: careers_url is written from the company template only, url stays the board link, and Actions logs do not show it', async () => {
+  const st = world();
+  st.tables.companies[0].careers_url_template = 'https://careersample.invalid/roles/{slug}';
+  const stub = await startStub(st);
+  try {
+    const r = await runWorker(JOBS, [], { url: stub.url, fixtures, env: { GITHUB_ACTIONS: 'true' } });
+    assert.equal(r.code, 0, r.out);
+    const fresh = row(st, 'workable:zorblaxcanary:fresh1');
+    assert.equal(fresh.careers_url, 'https://careersample.invalid/roles/canary-technical-support-engineer');
+    assert.match(fresh.url, /apply\.workable\.com/);
+    assert.ok(!r.out.includes('careersample'), r.out);
+  } finally {
+    await stub.close();
+  }
+});
