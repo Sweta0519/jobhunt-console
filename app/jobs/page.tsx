@@ -1,12 +1,12 @@
 import { requireOwner } from '../lib/supabase'
-import { outcomeLine, type Job } from '../lib/queries'
+import { outcomeLine, FEED_CREDITS, type Job } from '../lib/queries'
 import { jobPrompt } from '../lib/prompts'
 import { NavBar, Section, Empty, StatusBadge, ExternalLink, formatDay } from '../components/ui'
 import { ActionButton, CopyButton } from '../components/ActionButton'
 import Link from 'next/link'
 import { Logo } from '../components/Logo'
 import { FilterBar } from '../components/Interactive'
-import { setJobStatus } from '../actions'
+import { setJobStatus, requestDraft } from '../actions'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Jobs' }
@@ -29,12 +29,21 @@ export default async function Jobs({
   // most here often have no score at all (imported from the inbox, or added
   // by hand), and a score-ordered page limit silently dropped every one.
   const APPLIED = ['applied', 'shortlisted', 'interview', 'rejected']
-  const [{ data: scored }, { data: apps }, { data: cos }, { data: drafts }] = await Promise.all([
-    supabase.from('jobs').select('*').not('status', 'in', `(${APPLIED.join(',')})`).order('score', { ascending: false, nullsFirst: false }).limit(400),
+  const [{ data: scored }, { data: apps }, { data: cos }, { data: drafts }, { data: isPrimary }] = await Promise.all([
+    // Only rows a view can show: ineligible rows used to eat the 400 and push real roles off.
+    supabase
+      .from('jobs')
+      .select('*')
+      .not('status', 'in', `(${APPLIED.join(',')})`)
+      .eq('closed', false)
+      .or('eligible.eq.true,german_required.eq.true')
+      .order('score', { ascending: false, nullsFirst: false })
+      .limit(400),
     supabase.from('jobs').select('*').in('status', APPLIED),
     supabase.from('companies').select('slug,name,logo_path'),
     // Row level security returns nothing for anyone but her.
     supabase.from('resume_drafts').select('id,job_id,status').in('status', ['draft', 'approved']),
+    supabase.rpc('is_primary'),
   ])
   const draftOf = new Map((drafts || []).map((d) => [d.job_id as string, d as { id: string; status: string }]))
   const all = [...((scored as Job[]) || []), ...((apps as Job[]) || [])]
@@ -55,8 +64,11 @@ export default async function Jobs({
   const sort = sp.sort === 'score' ? 'score' : 'newest'
   const postedAt = (j: Job) => j.posted_date || j.first_seen_at?.slice(0, 10) || ''
   const byNewest = (a: Job, b: Job) => postedAt(b).localeCompare(postedAt(a)) || (b.score ?? -1) - (a.score ?? -1)
+  // Roles already open when their board was first read are kept apart: they never notified and never draft.
+  const live = (j: Job) => j.eligible && !j.closed && !APPLIED.includes(j.status)
+  const backlog = all.filter((j) => live(j) && j.backlog).sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
   const open = all
-    .filter((j) => j.eligible && !j.closed && !APPLIED.includes(j.status))
+    .filter((j) => live(j) && !j.backlog)
     .sort(sort === 'newest' ? byNewest : (a, b) => (b.score ?? -1) - (a.score ?? -1))
   const funnel = {
     applied: applied.length,
@@ -78,7 +90,9 @@ export default async function Jobs({
       ? byOutcome[outcome as keyof typeof byOutcome] ?? applied
       : view === 'german'
         ? german
-        : open
+        : view === 'backlog'
+          ? backlog
+          : open
 
   return (
     <>
@@ -94,6 +108,9 @@ export default async function Jobs({
           <Tab href="/jobs" label={`Open ${open.length}`} active={view === 'open'} />
           <Tab href="/jobs?view=applied" label={`Applied ${appliedAll.length}`} active={view === 'applied'} />
           <Tab href="/jobs?view=german" label={`Needs German ${german.length}`} active={view === 'german'} />
+          {backlog.length > 0 && (
+            <Tab href="/jobs?view=backlog" label={`Already open ${backlog.length}`} active={view === 'backlog'} />
+          )}
         </div>
 
         {view === 'open' && open.length > 0 && (
@@ -156,6 +173,12 @@ export default async function Jobs({
                 <div className="card-meta">
                   {j.company} · {j.location || 'location unknown'}
                   {j.posted_date ? ` · posted ${formatDay(j.posted_date)}` : ''}
+                  {FEED_CREDITS[j.source] && (
+                    <>
+                      {' · via '}
+                      <ExternalLink href={FEED_CREDITS[j.source].url}>{FEED_CREDITS[j.source].label}</ExternalLink>
+                    </>
+                  )}
                 </div>
                 <div className="row" style={{ marginTop: 8 }}>
                   <StatusBadge status={j.status} />
@@ -164,6 +187,7 @@ export default async function Jobs({
                       <StatusBadge status={draftOf.get(j.id)!.status === 'draft' ? 'draft_ready' : 'approved'} />
                     </Link>
                   )}
+                  {j.backlog && <StatusBadge status="backlog" />}
                   {j.german_required && <span className="chip">German required</span>}
                   {j.closed && j.status !== 'rejected' && <span className="chip">closed</span>}
                   {outcomeLine(j) && <span className="card-meta">{outcomeLine(j)}</span>}
@@ -194,6 +218,13 @@ export default async function Jobs({
                     >
                       Rejected
                     </ActionButton>
+                  )}
+                  {isPrimary && ['found', 'saved'].includes(j.status) && !j.closed && !draftOf.get(j.id) && (
+                    j.draft_requested_at ? (
+                      <StatusBadge status="queued" />
+                    ) : (
+                      <ActionButton action={requestDraft.bind(null, j.id)}>Draft a CV</ActionButton>
+                    )
                   )}
                   <CopyButton text={jobPrompt(j)} label="Copy prompt" />
                 </div>

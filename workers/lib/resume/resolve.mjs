@@ -4,6 +4,7 @@
 // two fixed API hosts below. Nothing from the URL becomes a host.
 
 import { cleanText } from './text.mjs';
+import { UA } from '../sources.mjs';
 
 const GH = /^https:\/\/(?:boards|job-boards)\.greenhouse\.io\/([a-z0-9_-]+)\/jobs\/(\d+)(?:[/?#]|$)/i;
 const ASHBY = /^https:\/\/jobs\.ashbyhq\.com\/([A-Za-z0-9._%-]+)\/([0-9a-f-]{36})(?:[/?#]|$)/i;
@@ -20,7 +21,7 @@ export function parseAtsUrl(url) {
 }
 
 async function getJson(url) {
-  const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20000), redirect: 'error' });
+  const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(20000), redirect: 'error' });
   if (!r.ok) throw new Error('status');
   return r.json();
 }

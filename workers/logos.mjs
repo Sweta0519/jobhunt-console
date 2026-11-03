@@ -10,6 +10,7 @@
 import { createHash } from 'node:crypto';
 import { select, updateEach, startRun, parseArgs } from './lib/db.mjs';
 import { UA, sleep } from './lib/sources.mjs';
+import { detail, isLocal, safeCode } from './lib/publiclog.mjs';
 
 // The icon service answers an unknown domain with the same generic image
 // (1150 bytes), and three unrelated companies were showing it as their logo.
@@ -122,14 +123,14 @@ async function main() {
     if (!icon) {
       missed++;
       updates.push({ slug: c.slug, domain: c.domain || null, logo_checked_at: now });
-      console.log(`  miss  ${c.slug.padEnd(28)} ${domain}`);
+      detail(`  miss  ${c.slug.padEnd(28)} ${domain}`);
     } else {
       const ext = icon.type.includes('svg') ? 'svg' : icon.type.includes('png') ? 'png' : 'ico';
       const path = `${c.slug}.${ext}`;
       if (!args['dry-run']) await upload(path, icon.buf, icon.type);
       updates.push({ slug: c.slug, domain, logo_path: path, logo_checked_at: now });
       done++;
-      console.log(`  ok    ${c.slug.padEnd(28)} ${domain} (${icon.buf.length}B)`);
+      detail(`  ok    ${c.slug.padEnd(28)} ${domain} (${icon.buf.length}B)`);
     }
     await sleep(250); // be a polite client
   }
@@ -143,6 +144,6 @@ async function main() {
 main()
   .then(() => setTimeout(() => process.exit(0), 150))
   .catch((e) => {
-    console.error(e.message);
+    console.error(isLocal() ? e.message : safeCode(e)); // the message can name a company or a storage path
     setTimeout(() => process.exit(1), 150);
   });

@@ -51,6 +51,14 @@ export function StatusBadge({ status }: { status: string }) {
     closed: { tone: 'inert', glyph: '–', label: 'Closed' },
     rejected: { tone: 'inert', glyph: '–', label: 'Rejected' },
     found: { tone: 'inert', glyph: '·', label: 'Not applied' },
+
+    // job boards: roles already open when a board was first read, and the board candidates
+    backlog: { tone: 'inert', glyph: '·', label: 'Already open' },
+    board_watching: { tone: 'done', glyph: '✓', label: 'Watching' },
+    board_review: { tone: 'wait', glyph: '◷', label: 'Needs a look' },
+    board_rejected: { tone: 'inert', glyph: '·', label: 'Not them' },
+    board_stopped: { tone: 'inert', glyph: '·', label: 'Not watching' },
+    board_unsupported: { tone: 'inert', glyph: '·', label: 'Check by hand' },
     saved: { tone: 'inert', glyph: '☆', label: 'Saved' },
   }
   const s = map[status] ?? { tone: 'inert', glyph: '·', label: status }

@@ -4,7 +4,7 @@ name: resumes
 #
 # This repository and its logs are public. Nothing here may print CV text,
 # draft text or Claude's output: the worker replaces console.* and logs only
-# job ids and counts. Never add upload-artifact, tee, a pull_request trigger
+# a keyed hash of each job id (ids carry the company token) and counts. Never add upload-artifact, tee, a pull_request trigger
 # or --debug to this file. workers/resumes.workflow.test.mjs enforces this.
 #
 # Fired by pg_cron (migration 0013). The schedule below is GitHub's best-effort

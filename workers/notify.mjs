@@ -16,6 +16,7 @@
 
 import { select, upsert, owners, forOwner, startRun, parseArgs } from './lib/db.mjs';
 import { UA, githubToken, graphql, sleep } from './lib/sources.mjs';
+import { detail, isLocal, safeCode } from './lib/publiclog.mjs';
 
 // Every row carries its owner: the batch upsert squares the key set, so one
 // row without it would be sent as an explicit null.
@@ -304,8 +305,9 @@ async function main() {
 
   if (args['dry-run']) {
     console.log(`${out.length} notification(s) would be raised:`);
+    // Titles name companies and roles, and labels name people: local only.
     const label = new Map(people.map((o) => [o.id, o.label || (o.primary ? 'primary' : o.id.slice(0, 8))]));
-    for (const n of out) console.log(`  ${label.get(n.owner)} [${n.severity}] ${n.title}${n.body ? ` — ${n.body.slice(0, 60)}` : ''}`);
+    for (const n of out) detail(`  ${label.get(n.owner)} [${n.severity}] ${n.title}${n.body ? ` — ${n.body.slice(0, 60)}` : ''}`);
     return;
   }
 
@@ -321,6 +323,6 @@ async function main() {
 main()
   .then(() => setTimeout(() => process.exit(0), 150))
   .catch((e) => {
-    console.error(e.message);
+    console.error(isLocal() ? e.message : safeCode(e)); // the message can carry the failing row
     setTimeout(() => process.exit(1), 150);
   });

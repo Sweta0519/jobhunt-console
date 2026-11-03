@@ -12,6 +12,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { isLocal, safeCode } from './lib/publiclog.mjs';
 import { select, updateEach, startRun, parseArgs } from './lib/db.mjs';
 import { DATA_DIR } from './lib/publish/paths.mjs';
 import { renderItem } from './lib/publish/render.mjs';
@@ -120,7 +121,7 @@ async function main() {
         });
         console.log(`  ${row.id.padEnd(8)} ${files.length} file(s)`);
       } catch (e) {
-        console.warn(`  ${row.id}: ${e.message}`);
+        console.warn(`  ${row.id}: ${isLocal() ? e.message : safeCode(e)}`);
       }
     }
   } finally {
@@ -135,6 +136,6 @@ async function main() {
 main()
   .then(() => setTimeout(() => process.exit(0), 200))
   .catch((e) => {
-    console.error(e.message);
+    console.error(isLocal() ? e.message : safeCode(e));
     setTimeout(() => process.exit(1), 200);
   });

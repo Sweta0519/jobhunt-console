@@ -98,6 +98,17 @@ export async function select(table, query = '') {
   return request('GET', table, { query });
 }
 
+/** Every row, a page at a time. A plain select silently stops at PostgREST's max rows. */
+export async function selectAll(table, query = '', { page = 1000 } = {}) {
+  const sep = query ? '&' : '?';
+  const out = [];
+  for (let offset = 0; ; offset += page) {
+    const rows = (await select(table, `${query}${sep}limit=${page}&offset=${offset}`)) || [];
+    out.push(...rows);
+    if (rows.length < page) return out;
+  }
+}
+
 export async function patch(table, query, body) {
   return request('PATCH', table, { query, body, headers: { Prefer: 'return=minimal' } });
 }
@@ -178,6 +189,8 @@ export function forOwner(owner) {
   return {
     owner,
     select: (table, query) => select(table, scope(query)),
+    // The query must carry a stable order= (order=id.asc, or order=slug.asc on companies).
+    selectAll: (table, query, opts) => selectAll(table, scope(query), opts),
     upsert: (table, rows, opts) => upsert(table, (rows || []).map((r) => ({ ...r, owner })), opts),
     patch: (table, query, body) => patch(table, scope(query), body),
     updateEach: (table, keyColumn, rows) => updateEach(table, keyColumn, rows, filter),

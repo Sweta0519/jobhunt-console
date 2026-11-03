@@ -20,3 +20,7 @@ master-cv*.json
 
 # Supabase CLI scratch
 supabase/.temp/
+
+# Local-only lists (seed boards): this repository is public.
+*.local.json
+scripts/boards-seed.local.json

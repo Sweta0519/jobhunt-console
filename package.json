@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "import:dry": "node scripts/import.mjs --dry-run",
-    "test": "node --test workers/lib/rank.test.mjs workers/jobs.test.mjs scripts/import.test.mjs workers/lib/resume/text.test.mjs workers/lib/resume/resolve.test.mjs workers/lib/resume/parse-master.test.mjs workers/lib/resume/schema.test.mjs workers/lib/resume/compose.test.mjs workers/lib/resume/facts.test.mjs workers/lib/resume/diff.test.mjs workers/lib/resume/prompt.test.mjs workers/lib/resume/claude.test.mjs workers/lib/resume/safelog.test.mjs workers/resumes.test.mjs workers/resumes.workflow.test.mjs",
+    "test": "node --test workers/lib/rank.test.mjs workers/jobs.test.mjs scripts/import.test.mjs workers/lib/resume/text.test.mjs workers/lib/resume/resolve.test.mjs workers/lib/resume/parse-master.test.mjs workers/lib/resume/schema.test.mjs workers/lib/resume/compose.test.mjs workers/lib/resume/facts.test.mjs workers/lib/resume/diff.test.mjs workers/lib/resume/prompt.test.mjs workers/lib/resume/claude.test.mjs workers/lib/resume/safelog.test.mjs workers/resumes.test.mjs workers/resumes.workflow.test.mjs workers/lib/boards/classify.test.mjs workers/lib/boards/hosts.test.mjs workers/lib/boards/pace.test.mjs workers/lib/boards/careers.test.mjs workers/jobs.decide.test.mjs workers/jobs.poll.test.mjs workers/boards.test.mjs workers/boards.workflow.test.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

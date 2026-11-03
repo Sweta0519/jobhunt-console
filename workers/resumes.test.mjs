@@ -289,3 +289,73 @@ test('a missing OAuth token fails the draft step without printing anything sensi
     assert.match(r.out, /failed code=no_token/);
   });
 });
+
+// --- backlog, priority-free bar, queue ceiling, hashed ids -------------------------
+const addJob = (state, id, extra = {}) => {
+  const base = { owner: PRIMARY, company: 'Initech Widgets', company_slug: 'initech-widgets', title: id, location: 'Remote', status: 'found', closed: false, eligible: true, score: 80, first_seen_at: iso(NOW - 3_600_000) };
+  state.tables.jobs.push({ ...base, id, ...extra });
+  state.tables.job_descriptions.push({ owner: PRIMARY, job_id: id, description: 'x', kind: 'board', chars: 5000, sha: id });
+};
+
+test('a backlog row is not queued on its own; one she asked for is queued', async () => {
+  await scenario({ jobs: 0 }, async ({ state, url }) => {
+    addJob(state, 'ashby:acme:old', { backlog: true });
+    addJob(state, 'ashby:acme:asked', { backlog: true, draft_requested_at: iso(NOW) });
+    addJob(state, 'ashby:acme:normal', { score: 75 });
+    const r = await exec(['--plan'], url);
+    assert.equal(r.code, 0, r.out);
+    const byJob = Object.fromEntries(state.tables.resume_drafts.map((d) => [d.job_id, d]));
+    assert.equal(byJob['ashby:acme:old'], undefined);
+    assert.equal(byJob['ashby:acme:asked'].status, 'queued');
+    assert.equal(byJob['ashby:acme:normal'].status, 'queued');
+  });
+});
+
+test('one bar for every company: 61 is not queued, 70 is', async () => {
+  await scenario({ jobs: 0 }, async ({ state, url }) => {
+    addJob(state, 'ashby:acme:a', { score: 61 });
+    addJob(state, 'ashby:acme:b', { score: 70 });
+    await exec(['--plan'], url);
+    const ids = state.tables.resume_drafts.map((d) => d.job_id);
+    assert.deepEqual(ids, ['ashby:acme:b']);
+  });
+});
+
+test('queue ceiling: 40 candidates with a cap of 5 queue at most 15, the best ones; a better one arriving later gets in', async () => {
+  await scenario({ jobs: 0, cap: 5 }, async ({ state, url }) => {
+    for (let i = 0; i < 40; i++) addJob(state, `ashby:acme:j${String(i).padStart(2, '0')}`, { score: 70 + (i % 30) });
+    await exec(['--plan'], url);
+    const queued = state.tables.resume_drafts.filter((d) => d.status === 'queued');
+    assert.equal(queued.length, 15);
+    const scoreOf = (id) => state.tables.jobs.find((j) => j.id === id).score;
+    const worstQueued = Math.min(...queued.map((d) => scoreOf(d.job_id)));
+    const bestLeft = Math.max(...state.tables.jobs.filter((j) => !queued.some((d) => d.job_id === j.id)).map((j) => j.score));
+    assert.ok(worstQueued >= bestLeft, `${worstQueued} < ${bestLeft}`);
+    // a second plan adds nothing while the queue is full
+    await exec(['--plan'], url);
+    assert.equal(state.tables.resume_drafts.length, 15);
+    // after drafts leave the queue, the next best take the freed places
+    for (const d of queued.slice(0, 5)) d.status = 'draft';
+    await exec(['--plan'], url);
+    assert.equal(state.tables.resume_drafts.filter((d) => d.status === 'queued').length, 15);
+  });
+});
+
+test('draft order on equal score: newest first; logs carry a hash, never the id', async () => {
+  await scenario({ jobs: 0, cap: 5 }, async ({ state, url }) => {
+    addJob(state, 'ashby:acme:older', { first_seen_at: iso(NOW - 5 * 3_600_000) });
+    addJob(state, 'ashby:acme:newer', { first_seen_at: iso(NOW - 1 * 3_600_000) });
+    for (const id of ['ashby:acme:older', 'ashby:acme:newer']) {
+      const text = posting('success', join(tmpdir(), 'unused-count'));
+      state.tables.job_descriptions.find((d) => d.job_id === id).description = text;
+      state.tables.job_descriptions.find((d) => d.job_id === id).chars = text.length;
+      state.tables.resume_drafts.push({ id: `d-${id}`, owner: PRIMARY, job_id: id, master_version: 1, status: 'queued', attempts: 0, generation: 0, last_attempt_at: null });
+    }
+    const r = await exec(draftArgs, url, draftEnv);
+    assert.equal(r.code, 0, r.out);
+    assert.ok(!r.out.includes('acme'), 'no company token in the log');
+    assert.match(r.out, /draft job=[0-9a-f]{10} /);
+    const order = state.tables.resume_drafts.filter((d) => d.drafted_at).sort((a, b) => a.drafted_at.localeCompare(b.drafted_at)).map((d) => d.job_id);
+    assert.deepEqual(order, ['ashby:acme:newer', 'ashby:acme:older']);
+  });
+});

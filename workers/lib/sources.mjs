@@ -4,7 +4,7 @@
 // database: a stale saved copy silently masked a newly added source twice
 // before, so there is deliberately no override layer.
 
-export const UA = 'jobhunt-console (personal digest; github.com/Sweta0519)';
+export const UA = 'jobhunt-console (personal job digest; +https://github.com/Sweta0519/jobhunt-console)';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export const COMPANY_WEIGHT = {

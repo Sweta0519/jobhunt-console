@@ -3,7 +3,7 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 
-const RESERVED = new Set(['select', 'order', 'limit', 'on_conflict']);
+const RESERVED = new Set(['select', 'order', 'limit', 'offset', 'on_conflict']);
 
 function matches(row, key, spec) {
   const v = row[key];
@@ -47,6 +47,8 @@ export async function startStub(state) {
         const [col, dir] = order.split('.');
         out = [...out].sort((a, b) => (a[col] > b[col] ? 1 : a[col] < b[col] ? -1 : 0) * (dir === 'desc' ? -1 : 1));
       }
+      const offset = Number(url.searchParams.get('offset')) || 0;
+      if (offset) out = out.slice(offset);
       const limit = Number(url.searchParams.get('limit'));
       if (limit) out = out.slice(0, limit);
       return send(200, out);

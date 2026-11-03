@@ -1,0 +1,51 @@
+name: boards
+
+# Finds job boards for companies in the console, about 100 a day until the list is
+# covered, then each company once a month. It also reads any board found for the
+# first time, so the morning poll never sees an unread one.
+#
+# This repository and its logs are public. The workers print counts only in
+# Actions: no company, token or person. workers/boards.workflow.test.mjs checks.
+#
+# Fired by pg_cron (migration 0015). The schedule below is GitHub's best-effort
+# second chance; both workers are idempotent.
+
+on:
+  schedule:
+    - cron: '50 4 * * *'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Companies to probe'
+        default: '100'
+
+concurrency:
+  group: boards
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # No npm install: both workers use only Node built-ins.
+      - name: Find boards
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LIMIT: ${{ inputs.limit || '100' }}
+        run: node workers/boards.mjs --limit "$LIMIT"
+      - name: Read new boards
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node workers/jobs.mjs --only-new-boards

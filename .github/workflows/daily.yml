@@ -24,9 +24,14 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 05:40 + 25 minutes is 06:05, still ahead of the 06:10 slot migration 0013 computed
+    # from a 15 minute limit (a poll of ~130 boards runs 3 to 5 minutes).
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history, so the rebase in the last step never meets a shallow boundary.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -40,7 +45,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # The workflow token is enough for public search and discussions.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node workers/questions.mjs --days "${{ inputs.days || 7 }}"
+          DAYS: ${{ inputs.days || '7' }}
+        run: node workers/questions.mjs --days "$DAYS"
 
       - name: Render previews for new drafts
         env:
@@ -50,6 +56,7 @@ jobs:
         run: node workers/render.mjs
 
       - name: Poll job boards
+        timeout-minutes: 12
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -65,6 +72,8 @@ jobs:
         run: node workers/logos.mjs --limit 40
 
       - name: Check for replies and anything needing attention
+        # A poll failure must not cost the notifier and the keep-alive.
+        if: ${{ !cancelled() }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -72,6 +81,7 @@ jobs:
         run: node workers/notify.mjs
 
       - name: Keep the schedule alive
+        if: ${{ !cancelled() }}
         # GitHub disables scheduled workflows in a public repo after 60 days of
         # no repository activity. This commit is the activity.
         run: |
@@ -81,4 +91,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .state/questions-last-run
           git diff --quiet --cached || git commit -m "chore: questions refreshed [skip ci]"
-          git push
+          # Another push to main can land between checkout and here; retry on top of it.
+          # .state/questions-last-run is written only by this job (its own concurrency
+          # group), so the rebase cannot conflict. boards.yml never commits.
+          git push || { sleep 15; git pull --rebase origin main && git push; } || { sleep 45; git pull --rebase origin main && git push; }

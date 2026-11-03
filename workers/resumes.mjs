@@ -8,7 +8,9 @@
 //      CLAUDE_CODE_OAUTH_TOKEN (draft step only).
 //
 // This repository and its Actions logs are public. console.* is replaced before
-// anything else runs, and the only output is event(): job ids and counts.
+// anything else runs, and the only output is event(): job hashes and counts.
+// Job ids carry the company token, so events print a keyed hash of the id
+// (hashId), never the id. scripts/job-hash.mjs maps a hash back.
 // Never log a message from the database layer (it carries the failing row),
 // never log anything Claude returned, never write a file.
 //
@@ -18,7 +20,7 @@
 import { appendFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { primaryOwner, forOwner, parseArgs } from './lib/db.mjs';
-import { installQuietConsole, event, safeCode } from './lib/resume/safelog.mjs';
+import { installQuietConsole, event, safeCode, hashId } from './lib/resume/safelog.mjs';
 import { isDraftable } from './lib/resume/text.mjs';
 import { DRAFT_SCHEMA, validateDraft } from './lib/resume/schema.mjs';
 import { composeDoc, normalizeOutput } from './lib/resume/compose.mjs';
@@ -31,6 +33,7 @@ installQuietConsole();
 const JOB_ID_RE = /^[a-z]+:[A-Za-z0-9._-]+(:[A-Za-z0-9._-]+)?$/;
 const STALE_DRAFTING_MS = 30 * 60_000;
 const DAY = 86_400_000;
+const QUEUE_FACTOR = 3; // queue at most 3 days of drafts
 const enc = encodeURIComponent;
 const now = () => new Date().toISOString();
 
@@ -94,25 +97,50 @@ async function plan(db, dry, jobId) {
   }
 
   const since = new Date(Math.max(cfg.from, Date.now() - 14 * DAY)).toISOString();
-  const cands = await db.select(
+  const cols = 'id,score,first_seen_at,backlog,company_slug,draft_requested_at';
+  const windowed = await db.selectAll(
     'jobs',
-    `?select=id,score,first_seen_at&eligible=is.true&closed=is.false&status=in.(found,saved)&score=gte.${cfg.min}&first_seen_at=gte.${enc(since)}`
+    `?select=${cols}&eligible=is.true&closed=is.false&status=in.(found,saved)&score=gte.${cfg.min}&first_seen_at=gte.${enc(since)}&order=id.asc`
+  );
+  // A role she asked a draft for jumps the queue, backlog or not.
+  const requested = await db.select(
+    'jobs',
+    `?select=${cols}&closed=is.false&status=in.(found,saved)&draft_requested_at=not.is.null`
+  );
+  // Backlog rows (already open when their board was first read) are never queued on their own.
+  const byId = new Map();
+  for (const c of [...requested, ...windowed.filter((c) => !c.backlog)]) if (!byId.has(c.id)) byId.set(c.id, c);
+  const cands = [...byId.values()].sort(
+    (a, b) => (b.score ?? -1) - (a.score ?? -1) || String(b.first_seen_at).localeCompare(String(a.first_seen_at))
   );
   const existing = new Map((await db.select('resume_drafts', '?select=id,job_id,status,reason,last_attempt_at')).map((d) => [d.job_id, d]));
-  const descs = new Map((await db.select('job_descriptions', '?select=job_id,kind,chars')).map((d) => [d.job_id, d]));
+  const descs = new Map((await db.selectAll('job_descriptions', '?select=job_id,kind,chars&order=job_id.asc')).map((d) => [d.job_id, d]));
 
   const inserts = [];
   const requeue = [];
   let skipped = 0;
   for (const c of cands) {
     const ex = existing.get(c.id);
+    if (ex && ex.status === 'skipped' && ['thin_description', 'no_description'].includes(ex.reason) && isDraftable(descs.get(c.id))) requeue.push(ex.id);
+  }
+  // Queue ceiling: a first wave must not fill the queue with weeks of work while
+  // a better role arrives tomorrow. Rows left out are looked at again next run,
+  // until the 14-day window ends; nothing is marked skipped.
+  const all0 = [...existing.values()];
+  const stale0 = Date.now() - STALE_DRAFTING_MS;
+  const waitingNow =
+    all0.filter((d) => d.status === 'queued').length +
+    all0.filter((d) => d.status === 'drafting' && (!d.last_attempt_at || Date.parse(d.last_attempt_at) < stale0)).length +
+    requeue.length;
+  let room = Math.max(0, cfg.cap * QUEUE_FACTOR - waitingNow);
+  for (const c of cands) {
+    const ex = existing.get(c.id);
     const d = descs.get(c.id);
-    if (ex) {
-      if (ex.status === 'skipped' && ['thin_description', 'no_description'].includes(ex.reason) && isDraftable(d)) requeue.push(ex.id);
-      continue;
-    }
-    if (isDraftable(d)) inserts.push({ job_id: c.id, master_version: version, status: 'queued' });
-    else if (d) { inserts.push({ job_id: c.id, master_version: version, status: 'skipped', reason: 'thin_description' }); skipped++; }
+    if (ex) continue;
+    if (isDraftable(d)) {
+      if (c.draft_requested_at) inserts.push({ job_id: c.id, master_version: version, status: 'queued' });
+      else if (room > 0) { inserts.push({ job_id: c.id, master_version: version, status: 'queued' }); room--; }
+    } else if (d) { inserts.push({ job_id: c.id, master_version: version, status: 'skipped', reason: 'thin_description' }); skipped++; }
     else if (Date.now() - Date.parse(c.first_seen_at) >= 3 * DAY) { inserts.push({ job_id: c.id, master_version: version, status: 'skipped', reason: 'no_description' }); skipped++; }
     // else: the description may still arrive; look again next run
   }
@@ -171,12 +199,14 @@ async function draft(db, { dry, jobId, bin, binArgs }) {
     }
     const jobs = new Map();
     for (const r of work) {
-      const [j] = await db.select('jobs', `?select=id,company,title,location,status,closed,score&id=eq.${enc(r.job_id)}`);
+      const [j] = await db.select('jobs', `?select=id,company,title,location,status,closed,score,first_seen_at,draft_requested_at&id=eq.${enc(r.job_id)}`);
       jobs.set(r.job_id, j || null);
     }
-    // Retried or manually requeued rows first, then by score.
-    work.sort((a, b) => (Number(!!(b.last_attempt_at || b.generation)) - Number(!!(a.last_attempt_at || a.generation)))
-      || ((jobs.get(b.job_id)?.score ?? -1) - (jobs.get(a.job_id)?.score ?? -1)));
+    // Retried, requeued or asked-for rows first, then by score, then newest.
+    const first = (r, j) => Number(!!(r.last_attempt_at || r.generation || j?.draft_requested_at));
+    work.sort((a, b) => first(b, jobs.get(b.job_id)) - first(a, jobs.get(a.job_id))
+      || ((jobs.get(b.job_id)?.score ?? -1) - (jobs.get(a.job_id)?.score ?? -1))
+      || String(jobs.get(b.job_id)?.first_seen_at).localeCompare(String(jobs.get(a.job_id)?.first_seen_at)));
 
     const used = jobId ? 0 : (await db.select('resume_drafts', `?select=id&last_attempt_at=gte.${enc(utcMidnight())}`)).length;
     const budget = jobId ? 1 : Math.max(0, cfg.cap - used);
@@ -245,7 +275,7 @@ async function draft(db, { dry, jobId, bin, binArgs }) {
           const reason = result.hard.every((h) => h.code === 'schema_invalid') ? 'schema_invalid' : 'facts_failed';
           if (row.id) await patchRow(row.id, { status: 'failed', reason, fact_flags: [...result.hard, ...result.soft], attempts: 0 });
           summary.failed++;
-          event('draft', { job: row.job_id, hard: result.hard.length, soft: result.soft.length });
+          event('draft', { job: hashId(row.job_id), hard: result.hard.length, soft: result.soft.length });
         } else {
           const gaps = result.output.requirements.filter((r) => r.status === 'gap').map((r) => ({ text: r.text, kind: r.kind, note: r.note }));
           const generation = (row.generation || 0) + 1;
@@ -265,7 +295,7 @@ async function draft(db, { dry, jobId, bin, binArgs }) {
             });
           }
           summary.drafted++;
-          event('draft', { job: row.job_id, hard: 0, soft: result.soft.length });
+          event('draft', { job: hashId(row.job_id), hard: 0, soft: result.soft.length });
         }
         streak = 0;
 
@@ -311,7 +341,7 @@ async function draft(db, { dry, jobId, bin, binArgs }) {
           return 1;
         }
         // timeout, transient, cli_error, no_output, output_too_large, spawn_failed
-        event('draft', { job: row.job_id, code: e.code });
+        event('draft', { job: hashId(row.job_id), code: e.code });
         if (attempts >= 3) {
           if (row.id) await patchRow(row.id, { status: 'failed', reason: e.code, attempts: 0 });
           summary.failed++;

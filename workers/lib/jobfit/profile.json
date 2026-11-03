@@ -269,5 +269,12 @@
       }
     ],
     "days": 7
+  },
+  "feeds": {
+    "himalayas": {
+      "queries": ["support engineer", "customer engineer", "solutions engineer", "customer success engineer"],
+      "countries": ["Germany"]
+    },
+    "jobicy": { "geo": "germany" }
   }
 }

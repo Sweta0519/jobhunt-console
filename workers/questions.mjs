@@ -14,6 +14,7 @@ import { fetchDiscourse } from './lib/sources/discourse.mjs';
 import { fetchStackOverflow } from './lib/sources/stackexchange.mjs';
 import { fetchIssues } from './lib/sources/github-issues.mjs';
 import { fetchDiscussions } from './lib/sources/github-discussions.mjs';
+import { isLocal, safeCode } from './lib/publiclog.mjs';
 
 const RETENTION_DAYS = 14;
 
@@ -63,7 +64,7 @@ async function main() {
       console.log(`${name}: ${got.length} item(s)`);
     } catch (e) {
       status[name] = { ok: false, error: String(e.message).slice(0, 300) };
-      console.warn(`${name} FAILED: ${e.message}`);
+      console.warn(`${name} FAILED: ${isLocal() ? e.message : safeCode(e)}`);
     }
   };
 
@@ -142,7 +143,7 @@ async function main() {
     );
     console.log(`\ntop 10 of ${rows.length}:`);
     for (const r of rows.slice(0, 10)) {
-      console.log(`  ${String(r.rank).padStart(3)}  ${r.site}  ${r.title.slice(0, 70)}`);
+      if (isLocal()) console.log(`  ${String(r.rank).padStart(3)}  ${r.site}  ${r.title.slice(0, 70)}`);
     }
     return;
   }
@@ -172,6 +173,6 @@ async function main() {
 }
 
 main().catch(async (e) => {
-  console.error(e.message);
+  console.error(isLocal() ? e.message : safeCode(e)); // a database error carries the failing row
   process.exit(1);
 });

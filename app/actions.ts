@@ -20,7 +20,7 @@ import type { ResumeDoc, MasterDoc, Requirement } from './lib/resumes'
 const now = () => new Date().toISOString()
 
 function ok() {
-  for (const p of ['/', '/approvals', '/questions', '/outreach', '/posts', '/jobs', '/record', '/companies', '/resumes']) {
+  for (const p of ['/', '/approvals', '/questions', '/outreach', '/posts', '/jobs', '/record', '/companies', '/companies/boards', '/resumes']) {
     revalidatePath(p)
   }
   return { ok: true as const }
@@ -387,4 +387,41 @@ export async function editResumeField(id: string, path: string, text: string) {
   if (error) return fail('Could not save this edit.')
   if (!saved?.length) return fail('This draft changed. Reload and try again.')
   return ok()
+}
+
+/**
+ * Job boards. The browser cannot write board columns: these three go through
+ * definer functions that act on the signed-in user only (migration 0014).
+ * Error text is never passed on, since it can name tables and columns.
+ */
+export async function addCompany(form: FormData) {
+  const { supabase } = await requireOwner()
+  const name = String(form.get('name') || '').trim()
+  const domain =
+    String(form.get('domain') || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '') || null
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+  if (!slug) return fail('Enter a company name.')
+  const { error } = await supabase.rpc('add_company', { p_slug: slug, p_name: name, p_domain: domain })
+  return error ? fail('Could not add that company.') : ok()
+}
+
+export async function decideBoard(slug: string, kind: string, token: string, accept: boolean) {
+  const { supabase } = await requireOwner()
+  const { error } = await supabase.rpc('decide_board_candidate', { p_slug: slug, p_kind: kind, p_token: token, p_accept: accept })
+  return error ? fail('Could not save that answer.') : ok()
+}
+
+export async function setCompanyWatch(slug: string, watch: boolean) {
+  const { supabase } = await requireOwner()
+  const { error } = await supabase.rpc('set_company_watch', { p_slug: slug, p_watch: watch })
+  return error ? fail('Could not change that company.') : ok()
+}
+
+/** Asks the draft worker for one job, backlog or not. Hers only. */
+export async function requestDraft(id: string) {
+  const { supabase } = await requireOwner()
+  const { data: primary } = await supabase.rpc('is_primary')
+  if (!primary) return fail('Drafts are not set up for this account.')
+  const { error } = await supabase.from('jobs').update({ draft_requested_at: now(), updated_at: now() }).eq('id', id)
+  return error ? fail('Could not ask for a draft.') : ok()
 }

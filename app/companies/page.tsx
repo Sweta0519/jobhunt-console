@@ -63,6 +63,9 @@ export default async function Companies() {
           Where you have applied, and how ready you are for the interview there. A drill
           counts as done only with evidence behind it.
         </p>
+        <p className="card-meta">
+          <Link href="/companies/boards">Job boards</Link>
+        </p>
 
         <Section
           title="Preparing"

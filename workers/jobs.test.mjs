@@ -108,6 +108,7 @@ function fakeDb(existing = []) {
   return {
     written,
     select: async () => existing,
+    selectAll: async () => existing,
     upsert: async (table, rows) => { written.push(...rows.map((r) => ({ table, ...r }))); return rows.length; },
   };
 }

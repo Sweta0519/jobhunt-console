@@ -14,6 +14,16 @@ export type Job = {
   first_seen_at: string; posted_date: string | null
   applied_at: string | null; interviewed: boolean | null
   outcome_at: string | null; outcome_note: string | null; outcome_source: string | null
+  source: string; backlog: boolean; draft_requested_at: string | null
+}
+
+/**
+ * Aggregator feeds whose listings carry a visible credit link (their terms ask for it).
+ * Mirrors workers/lib/feeds; FEEDS is not bundled for the browser.
+ */
+export const FEED_CREDITS: Record<string, { label: string; url: string }> = {
+  himalayas: { label: 'Himalayas', url: 'https://himalayas.app' },
+  jobicy: { label: 'Jobicy', url: 'https://jobicy.com' },
 }
 
 /**
@@ -103,6 +113,7 @@ export async function getToday(supabase: DB) {
         .eq('eligible', true)
         .eq('closed', false)
         .eq('status', 'found')
+        .eq('backlog', false)
         .gte('score', 75)
         .order('score', { ascending: false, nullsFirst: false })
         .limit(3),

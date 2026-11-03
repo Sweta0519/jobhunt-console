@@ -2,25 +2,40 @@
 // Finds new roles at her target companies, straight from their job boards.
 //
 //   node workers/jobs.mjs [--dry-run] [--company vercel] [--min 70] [--owner <label|uuid>]
+//                         [--only-new-boards]
 //
 // Runs once per person in the console. Her profile is the committed
 // lib/jobfit/profile.json; anyone else's lives in their own `settings` row
 // `jobfit_profile`, so a second person's skills and rules never reach the
 // public repo. A person without one is skipped.
 //
-// Greenhouse, Ashby, Lever and Teamtailor all publish openly. That is better than
-// scraping LinkedIn in three ways: it is allowed, it carries the full
-// description so scoring is honest, and a role appears here before it reaches
-// LinkedIn. It is also how she would hear the day Vercel reopens the
-// Germany-remote support role she interviewed for.
+// Greenhouse, Ashby, Lever, Teamtailor, Workable, Recruitee and Personio all
+// publish openly. That is better than scraping LinkedIn in three ways: it is
+// allowed, it carries the full description so scoring is honest, and a role
+// appears here before it reaches LinkedIn. Feeds (lib/feeds) add roles from
+// aggregators, and an employer's own board always wins over a feed's copy.
+//
+// This repository and its Actions logs are public. In Actions this prints
+// counts only: never a company, slug, board token, title, URL or owner label.
+// See lib/publiclog.mjs; locally everything is printed as before.
 
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { owners, forOwner, parseArgs } from './lib/db.mjs';
-import { UA, sleep } from './lib/sources.mjs';
+import { sleep } from './lib/sources.mjs';
 import { DEFAULT_PROFILE, loadProfile, scoreJob } from './lib/jobfit/jobfit.mjs';
-import { cleanText, leverFullText } from './lib/resume/text.mjs';
 import { resolveFull } from './lib/resume/resolve.mjs';
+import { BOARDS, fetchBoard } from './lib/boards/fetch.mjs';
+import { byHost } from './lib/boards/pace.mjs';
+import { hostKey, gapMs } from './lib/boards/hosts.mjs';
+import { core } from './lib/boards/classify.mjs';
+import { isStaffing } from './lib/boards/noise.mjs';
+import { isRecent, otherRegionTitle, normTitle, urlKeyOf, FEED_FIRST_RUN_MAX_FRESH } from './lib/boards/policy.mjs';
+import { FEEDS, memoFeed } from './lib/feeds/index.mjs';
+import { detail, detailWarn, who, isLocal } from './lib/publiclog.mjs';
+import { safeCode } from './lib/resume/safelog.mjs';
+
+export { BOARDS };
 
 /**
  * Titles worth scoring at all. Everything else on a 600-job board is noise.
@@ -39,160 +54,6 @@ export const RELEVANT =
   /(support|solutions? (engineer|architect|consultant)|success|technical account|customer engineer|forward deployed|implementation|onboarding|service desk|helpdesk|escalation)/i;
 export const CLEARLY_NOT =
   /(intern|working student|werkstudent|praktik|sales development|account executive|recruiter|designer|marketing manager|data scientist|frontend|backend engineer|software engineer)/i;
-
-const strip = (html) =>
-  String(html || '')
-    .replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#\d+;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-async function getJson(url) {
-  const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(20000) });
-  if (!r.ok) throw new Error(`${url} -> ${r.status}`);
-  return r.json();
-}
-
-/** Each board, normalised to one shape. Exported so a board can be tested alone. */
-export const BOARDS = {
-  async greenhouse(token) {
-    const j = await getJson(`https://boards-api.greenhouse.io/v1/boards/${token}/jobs?content=true`);
-    return (j.jobs || []).map((x) => ({
-      nativeId: String(x.id),
-      title: x.title,
-      url: x.absolute_url,
-      location: x.location?.name || '',
-      description: strip(x.content),
-      fullText: cleanText(x.content),
-      postedAt: x.updated_at || x.first_published || null,
-    }));
-  },
-  async ashby(token) {
-    const j = await getJson(`https://api.ashbyhq.com/posting-api/job-board/${token}?includeCompensation=false`);
-    return (j.jobs || []).map((x) => ({
-      nativeId: String(x.id),
-      title: x.title,
-      url: x.jobUrl,
-      location: [x.location, x.isRemote ? 'Remote' : ''].filter(Boolean).join(' '),
-      description: strip(x.descriptionHtml || x.descriptionPlain),
-      fullText: cleanText(x.descriptionHtml || x.descriptionPlain),
-      postedAt: x.publishedAt || null,
-    }));
-  },
-  async lever(token) {
-    const j = await getJson(`https://api.lever.co/v0/postings/${token}?mode=json`);
-    return (j || []).map((x) => ({
-      nativeId: String(x.id),
-      title: x.text,
-      url: x.hostedUrl,
-      location: x.categories?.location || '',
-      description: strip(x.descriptionPlain || x.description),
-      fullText: leverFullText(x),
-      postedAt: x.createdAt ? new Date(x.createdAt).toISOString() : null,
-    }));
-  },
-  /**
-   * Teamtailor. No JSON API, but every career site publishes /jobs.rss with the
-   * full description and a tt:location block per country, which is a better
-   * location signal than the prose: a role open in five named countries says so
-   * in the feed even when the page header only reads "Multiple locations".
-   *
-   * The token is the career host, e.g. careers.reap.global.
-   */
-  async teamtailor(token) {
-    const r = await fetch(`https://${token}/jobs.rss`, {
-      headers: { 'User-Agent': UA, Accept: 'application/rss+xml, application/xml' },
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!r.ok) throw new Error(`https://${token}/jobs.rss -> ${r.status}`);
-    const xml = await r.text();
-    const one = (s, tag) => {
-      const m = s.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`));
-      return m ? m[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : '';
-    };
-    return xml
-      .split('<item>')
-      .slice(1)
-      .map((item) => {
-        const url = one(item, 'link');
-        // .../jobs/8066197-technical-customer-engineer-emea
-        const nativeId = (url.match(/\/jobs\/(\d+)/) || [])[1] || url;
-        const countries = [
-          ...new Set(
-            [...item.matchAll(/<tt:country>([^<]*)<\/tt:country>/g)].map((m) => m[1].trim()).filter(Boolean)
-          ),
-        ];
-        const rawDescription = one(item, 'description');
-        const description = strip(rawDescription);
-        const remote = /\bremote\b/i.test(description);
-        return {
-          nativeId,
-          title: one(item, 'title'),
-          url,
-          location: [countries.join(', '), remote ? 'Remote' : ''].filter(Boolean).join(' '),
-          description,
-          fullText: cleanText(rawDescription),
-          postedAt: one(item, 'pubDate') ? new Date(one(item, 'pubDate')).toISOString() : null,
-        };
-      })
-      .filter((p) => p.title && p.url);
-  },
-};
-
-/**
- * Remote Rocketship, an aggregator, filtered to her titles and Germany. Its
- * listing page is server-rendered Next.js with the jobs in __NEXT_DATA__, and
- * robots.txt allows the path. Pagination is client-side and ?page= is ignored
- * by the server, so this reads the first page only: sorted newest first and
- * with about fourteen additions a week, twenty a day covers everything that
- * arrives. Descriptions are not in the payload; the two summaries, the tech
- * stack and the language flags stand in, and requiredLanguages is a cleaner
- * German signal than any regex over prose.
- */
-const RR_URL =
-  'https://www.remoterocketship.com/remote-jobs/?page=1&sort=DateAdded' +
-  '&jobTitle=Customer%2520Support%2520Engineer%2CTechnical%2520Support%2520Engineer%2CSupport%2520Engineer' +
-  '%2CTechnical%2520Support%2520Specialist%2CCustomer%2520Success%2520Engineer%2CClient%2520Support%2520Engineer' +
-  '&locations=Germany';
-
-async function fetchRemoteRocketship(url) {
-  const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'text/html' }, signal: AbortSignal.timeout(25000) });
-  if (!r.ok) throw new Error(`remoterocketship -> ${r.status}`);
-  const html = await r.text();
-  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-  if (!m) throw new Error('remoterocketship: __NEXT_DATA__ not found (page layout changed?)');
-  const jobs = JSON.parse(m[1])?.props?.pageProps?.initialJobOpenings || [];
-  return jobs.map((x) => {
-    const langs = Array.isArray(x.requiredLanguages) ? x.requiredLanguages : [];
-    return {
-      nativeId: String(x.id),
-      title: x.roleTitle || '',
-      url: x.url,
-      location: [x.location, x.locationType === 'remote' ? 'Remote' : x.locationType || ''].filter(Boolean).join(' '),
-      description: [x.jobDescriptionSummary, x.twoLineJobDescriptionSummary, (x.techStack || []).join(', ')].filter(Boolean).join(' '),
-      // The listing carries only summaries; the full text is looked up later, once per run budget.
-      fullText: null,
-      postedAt: x.created_at || null,
-      company: { name: x.company?.name || '', slug: x.company?.slug || '', homepage: x.company?.homePageURL || null },
-      remote: x.locationType === 'remote',
-      // The aggregator read the posting; trust its language flags over our regex.
-      germanFlag: langs.includes('de') || x.descriptionLanguage === 'de',
-      languageNote:
-        x.descriptionLanguage === 'de'
-          ? 'posting written in German (Remote Rocketship)'
-          : langs.length
-            ? `required languages per Remote Rocketship: ${langs.join(', ')}`
-            : '',
-      senior: !!x.isSenior,
-      ghostScore: x.ghostScore ?? null,
-    };
-  });
-}
 
 /**
  * Her rule, applied to a board posting. Same shape as the import's check:
@@ -214,7 +75,8 @@ export function eligibleFrom(location, remote, germanRequired) {
 /**
  * A stored profile, completed from the defaults. Skills are taken whole, not
  * merged: the defaults are her support-engineering skills, and a person in
- * another field must not inherit them.
+ * another field must not inherit them. `feeds` is never filled in: a person
+ * gets a feed only from a `feeds` block of their own.
  */
 export function withDefaults(p) {
   const base = structuredClone(DEFAULT_PROFILE);
@@ -280,12 +142,15 @@ const MAX_STORED_CHARS = 60000;
  * from jobs, because /jobs selects * over 400 rows. Aggregator listings are
  * resolved to the employer's own posting when they link to Greenhouse or Ashby
  * (at most `maxResolve` lookups a run), otherwise kept as the thin summary they
- * are, which the drafting worker skips.
+ * are, which the drafting worker skips. A feed that carries full text keeps it
+ * as kind `aggregator`.
  *
  * Returns counts only.
  */
 export async function storeDescriptions(db, rows, fullById, { resolve = resolveFull, wait = sleep, maxResolve = 10 } = {}) {
-  const have = new Map((await db.select('job_descriptions', '?select=job_id,sha,kind')).map((d) => [d.job_id, d]));
+  const have = new Map(
+    (await db.selectAll('job_descriptions', '?select=job_id,sha,kind&order=job_id.asc')).map((d) => [d.job_id, d])
+  );
   const out = [];
   const counts = { stored: 0, resolved: 0, summary: 0 };
   let lookups = 0;
@@ -294,7 +159,7 @@ export async function storeDescriptions(db, rows, fullById, { resolve = resolveF
     if (!entry) continue;
     const prev = have.get(r.id);
     let text = entry.text || null;
-    let kind = 'board';
+    let kind = entry.kind && entry.kind !== 'summary' ? entry.kind : 'board';
     if (!text) {
       if (prev?.kind === 'resolved') continue;
       kind = 'summary';
@@ -319,6 +184,220 @@ export async function storeDescriptions(db, rows, fullById, { resolve = resolveF
   return counts;
 }
 
+const APPLIED = ['applied', 'shortlisted', 'interview', 'rejected'];
+const FEED_PREFIXES = FEEDS.map((f) => f.idPrefix);
+const isFeedId = (id) => FEED_PREFIXES.some((p) => String(id).startsWith(`${p}:`));
+export const coTitleKey = (companyName, title) => `${core(companyName)}|${normTitle(title)}`;
+
+/**
+ * One posting to one stored row, or a reason to skip it. Pure.
+ *
+ * ctx   { profile, relevant, exclude, min, now }
+ * input { id, source, company {slug,name}, posting, prev, twin, drafted, appliedKeys, firstRun, label }
+ *   prev   the stored row with this id, if any
+ *   twin   a stored feed row for the same posting under another id
+ *
+ * Backlog rows are stored and visible ("Already open") but never notify and
+ * never draft: that is what keeps a newly read board from announcing weeks of
+ * old roles as news.
+ */
+export function decideRow(ctx, { id, source, company, posting: p, prev, twin, drafted, appliedKeys, firstRun = false, label = '' }) {
+  const title = String(p.title || '').trim();
+  if (!title || !ctx.relevant.test(title) || ctx.exclude.test(title)) return { skip: 'filter' };
+  const scored = scoreFor({ title, company: company.name, location: p.location, description: p.description }, ctx.profile);
+  const germanRequired = !!p.germanFlag || scored.germanRequired;
+  const remote = p.remote !== undefined ? p.remote : scored.remote;
+  const eligible = eligibleFor(p.location, remote, germanRequired, ctx.profile) && !otherRegionTitle(title);
+  const isNew = !prev;
+  // Most relevant titles on a big board are other countries. Keep what a view can show.
+  if (isNew && !eligible && !germanRequired) return { skip: 'ineligible' };
+
+  let backlog = false;
+  let notified = false;
+  let superseded = null;
+  let status = prev?.status ?? 'found';
+  let notes = prev?.notes ?? null;
+  const applied_at = prev?.applied_at ?? null;
+  if (prev) backlog = !!prev.backlog;
+  else {
+    if (twin) {
+      // She acted on the aggregator row: no second copy.
+      if (!['found', 'saved'].includes(twin.status)) return { skip: 'acted' };
+      superseded = twin.id;
+      status = twin.status;
+      notes = twin.notes ?? null;
+      // A finished draft exists, or the twin was already set aside: do not draft or announce twice.
+      backlog = !!twin.backlog || !!drafted?.has(twin.id);
+      notified = true;
+    }
+    if (appliedKeys?.has(`${company.slug}|${normTitle(title)}`)) backlog = true; // applied via LinkedIn export
+    if (isStaffing(company.name)) backlog = true;
+    if (firstRun && !isRecent(p.postedAt, ctx.now)) backlog = true;
+  }
+
+  const row = {
+    id,
+    source,
+    company_slug: company.slug,
+    company: company.name,
+    title,
+    url: p.url,
+    location: p.location || null,
+    workplace_type: p.remote !== undefined ? (p.remote ? 'Remote' : null) : /remote/i.test(p.location || '') ? 'Remote' : null,
+    posted_date: p.postedAt ? p.postedAt.slice(0, 10) : null,
+    excerpt: (p.description || '').slice(0, 400) || null,
+    score: scored.total,
+    score_breakdown: scored.breakdown,
+    score_notes: {
+      ...scored.notes,
+      language: p.languageNote ? `${p.languageNote}${germanRequired ? ' (GERMAN REQUIRED)' : ''}` : scored.notes.language,
+      ghost: p.ghostScore != null ? `${label} ghost score ${p.ghostScore}` : undefined,
+    },
+    german_required: germanRequired,
+    remote: remote ?? null,
+    eligible,
+    closed: false,
+    last_seen_at: new Date(ctx.now).toISOString(),
+    backlog,
+    status,
+    applied_at,
+    notes,
+    // Never add first_seen_at here: rows are squared off for the batch upsert, and
+    // a null for the others would break it. The column default sets it.
+  };
+  const fresh = isNew && eligible && !backlog && !notified && scored.total >= ctx.min;
+  return { row, fresh, superseded, isNew, backlog, eligible, notified };
+}
+
+/** Everything one owner's poll needs to remember between boards and feeds. */
+export function newState(ctx, known, drafted) {
+  const byId = new Map();
+  const byUrl = new Map();
+  const byCo = new Map();
+  const appliedKeys = new Set();
+  for (const k of known) {
+    byId.set(k.id, k);
+    const u = urlKeyOf(k.url);
+    if (u) byUrl.set(u, k);
+    byCo.set(coTitleKey(k.company, k.title), k);
+    if (APPLIED.includes(k.status)) appliedKeys.add(`${k.company_slug}|${normTitle(k.title)}`);
+  }
+  return {
+    ctx, known, drafted, byId, byUrl, byCo, appliedKeys,
+    boardKeys: new Set(), // url and company+title of every board posting read this run
+    rows: [], fresh: [], fullById: new Map(), superseded: [], newCompanies: new Map(),
+    counts: { skippedIneligible: 0, backlogNew: 0 },
+  };
+}
+
+/** One board's postings into rows. Exported so the decisions can be tested without a database. */
+export function processBoard(st, c, postings) {
+  let kept = 0;
+  const firstRun = !c.board_baselined_at;
+  for (const p of postings) {
+    const title = String(p.title || '').trim();
+    if (!st.ctx.relevant.test(title) || st.ctx.exclude.test(title)) continue;
+    const u = urlKeyOf(p.url);
+    const co = coTitleKey(c.name, title);
+    st.boardKeys.add(`u:${u}`);
+    st.boardKeys.add(`c:${co}`);
+    const id = `${c.board_kind}:${c.board_token}:${p.nativeId}`;
+    const twinRow = (u && st.byUrl.get(u)) || st.byCo.get(co);
+    const twin = twinRow && twinRow.id !== id && isFeedId(twinRow.id) ? twinRow : null;
+    const d = decideRow(st.ctx, {
+      id, source: c.board_kind, company: { slug: c.slug, name: c.name }, posting: p,
+      prev: st.byId.get(id), twin, drafted: st.drafted, appliedKeys: st.appliedKeys, firstRun,
+    });
+    if (d.skip) { if (d.skip === 'ineligible') st.counts.skippedIneligible++; continue; }
+    st.rows.push(d.row);
+    st.fullById.set(id, { text: p.fullText || null });
+    if (d.superseded) st.superseded.push(d.superseded);
+    if (d.isNew && d.eligible && d.backlog && !d.notified) st.counts.backlogNew++;
+    if (d.fresh) st.fresh.push(d.row);
+    kept++;
+  }
+  return kept;
+}
+
+const slugOf = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60);
+const NEW_COMPANIES_PER_FEED = 20;
+
+/**
+ * A feed's listings into rows. The employer's own board is the reference: a
+ * listing it already covers is dropped, eligible or not. Counts by reason.
+ *
+ * st.haveSlugs is the set of company slugs the owner already has.
+ */
+export function ingestFeed(feed, listings, st, { firstRun = false } = {}) {
+  const counts = { listed: listings.length, relevant: 0, board: 0, known: 0, copy: 0, kept: 0, newCompanies: 0 };
+  const sameFeedKeys = new Set();
+  const made = [];
+  for (const l of listings) {
+    const title = String(l.title || '').trim();
+    if (!st.ctx.relevant.test(title) || st.ctx.exclude.test(title)) continue;
+    counts.relevant++;
+    const slug = slugOf(l.company?.slug || l.company?.name);
+    if (!slug) continue;
+    const name = l.company?.name || slug;
+    const id = `${feed.idPrefix}:${l.nativeId}`;
+    const u = urlKeyOf(l.url);
+    const co = coTitleKey(name, title);
+    const own = st.byId.has(id); // a listing's own stored id is never dropped
+    if (!own) {
+      if (st.boardKeys.has(`u:${u}`) && u || st.boardKeys.has(`c:${co}`)) { counts.board++; continue; }
+      if ((u && st.byUrl.has(u)) || st.byCo.has(co)) { counts.known++; continue; }
+      if (sameFeedKeys.has(co) || (u && sameFeedKeys.has(`u:${u}`))) { counts.copy++; continue; }
+    }
+    sameFeedKeys.add(co);
+    if (u) sameFeedKeys.add(`u:${u}`);
+
+    if (!st.haveSlugs.has(slug)) {
+      if (!st.newCompanies.has(slug)) {
+        if (counts.newCompanies >= NEW_COMPANIES_PER_FEED) continue;
+        counts.newCompanies++;
+        const staffing = isStaffing(name);
+        const host = l.company?.homepage ? l.company.homepage.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : null;
+        st.newCompanies.set(slug, {
+          slug, name, origin: 'aggregator', next_probe_at: null,
+          domain: host, domain_source: host ? 'aggregator' : null,
+          board_block: staffing ? 'staffing' : null,
+        });
+      }
+    }
+    // A listing never sets board_kind or board_token: slug probing and classify decide that.
+    const d = decideRow(st.ctx, {
+      id, source: feed.id, company: { slug, name }, posting: l, prev: st.byId.get(id), twin: null,
+      drafted: st.drafted, appliedKeys: st.appliedKeys, firstRun, label: feed.label,
+    });
+    if (d.skip) { if (d.skip === 'ineligible') st.counts.skippedIneligible++; continue; }
+    made.push({ d, entry: { text: l.fullText || null, summary: l.description, kind: feed.textKind } });
+  }
+  if (firstRun) {
+    // A first read of a whole feed must not fill a day's notifications.
+    const fresh = made.filter((m) => m.d.fresh).sort((a, b) => b.d.row.score - a.d.row.score);
+    for (const m of fresh.slice(FEED_FIRST_RUN_MAX_FRESH)) {
+      m.d.row.backlog = true;
+      m.d.fresh = false;
+      m.d.backlog = true;
+    }
+  }
+  for (const { d, entry } of made) {
+    st.rows.push(d.row);
+    st.fullById.set(d.row.id, entry);
+    if (d.fresh) st.fresh.push(d.row);
+    if (d.isNew && d.eligible && d.backlog && !d.notified) st.counts.backlogNew++;
+    counts.kept++;
+  }
+  return counts;
+}
+
+/** The profile one person is polled with, or null when they have none yet. */
+export async function loadOwnerProfile(db, o) {
+  if (o.primary) return loadProfile();
+  const [row] = await db.select('settings', '?select=value&key=eq.jobfit_profile');
+  return row?.value ? withDefaults(row.value) : null;
+}
+
 async function main() {
   const args = parseArgs();
   let list = await owners();
@@ -326,23 +405,18 @@ async function main() {
   let failed = 0;
   for (const o of list) {
     const db = forOwner(o.id);
-    let profile;
-    if (o.primary) profile = loadProfile();
-    else {
-      const [row] = await db.select('settings', '?select=value&key=eq.jobfit_profile');
-      if (!row?.value) {
-        console.log(`\n${o.label || o.id}: no jobfit_profile in settings, skipped`);
-        continue;
-      }
-      profile = withDefaults(row.value);
+    const profile = await loadOwnerProfile(db, o);
+    if (!profile) {
+      console.log(`\n${who(o)}: no jobfit_profile in settings, skipped`);
+      continue;
     }
-    console.log(`\n== ${o.label || (o.primary ? 'primary' : o.id)}`);
+    console.log(`\n== ${who(o)}`);
     // One person's failure must not cost the other their morning's jobs.
     try {
       await runFor(db, profile, o.primary, args);
     } catch (e) {
       failed++;
-      console.error(`  ${o.label || o.id}: ${e.message}`);
+      console.error(`  ${who(o)}: ${isLocal() ? e.message : safeCode(e)}`);
     }
   }
   if (failed) throw new Error(`${failed} owner(s) failed`);
@@ -356,181 +430,154 @@ async function runFor(db, profile, primary, args) {
   try {
     await pollFor(db, profile, primary, args, min, relevant, exclude, finish);
   } catch (e) {
-    await finish(false, null, e.message);
+    await finish(false, null, e.message); // database only, per person
     throw e;
   }
 }
 
+const BOARD_ID = new RegExp(`^(${Object.keys(BOARDS).join('|')}):`);
+
 async function pollFor(db, profile, primary, args, min, relevant, exclude, finish) {
-  let companies = await db.select(
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const ctx = { profile, relevant, exclude, min, now };
+
+  let companies = await db.selectAll(
     'companies',
-    '?select=slug,name,board_kind,board_token&board_token=not.is.null&board_kind=not.is.null'
+    '?select=slug,name,board_kind,board_token,board_baselined_at,board_fail_count&board_token=not.is.null&board_kind=not.is.null&board_block=is.null' +
+      (args['only-new-boards'] ? '&board_baselined_at=is.null' : '') +
+      '&order=slug.asc'
   );
   if (args.company) companies = companies.filter((c) => c.slug === args.company);
-  if (!companies.length) {
-    console.log('no companies have a job board configured');
+  const feedsOn = !args.company && !args['only-new-boards'];
+  const activeFeeds = feedsOn ? FEEDS.map((f) => [f, f.config(profile, primary)]).filter(([, cfg]) => cfg) : [];
+  if (!companies.length && !activeFeeds.length) {
+    detail('no companies have a job board configured');
     await finish(true, { polled: 0 });
     return;
   }
 
-  const known = await db.select('jobs', '?select=id,url');
-  const existing = new Set(known.map((j) => j.id));
-  // The aggregator relays postings the board pollers may already hold; the
-  // employer URL is the same in both, so it is the dedupe key across sources.
-  const knownUrls = new Set(known.map((j) => (j.url || '').replace(/\/+$/, '').toLowerCase()).filter(Boolean));
-  const rows = [];
-  const fresh = [];
+  // One read of everything known, in pages: a plain select stops at 1000 rows,
+  // and a row missing here would have its status reset to found.
+  const known = await db.selectAll(
+    'jobs',
+    '?select=id,url,company_slug,company,title,status,applied_at,notes,backlog,source,closed,last_seen_at&order=id.asc'
+  );
+  const drafted = primary
+    ? new Set((await db.select('resume_drafts', '?select=job_id&status=in.(draft,approved)')).map((d) => d.job_id))
+    : new Set();
+  const st = newState(ctx, known, drafted);
+  st.haveSlugs = new Set((await db.selectAll('companies', '?select=slug&order=slug.asc')).map((c) => c.slug));
   const status = {};
-  // Full posting text per job id, for the resume drafts. description above is untouched.
-  const fullById = new Map();
 
-  for (const c of companies) {
-    const fetcher = BOARDS[c.board_kind];
-    if (!fetcher) continue;
-    let postings;
-    try {
-      postings = await fetcher(c.board_token);
-      status[c.slug] = postings.length;
-    } catch (e) {
-      status[c.slug] = `failed: ${e.message.slice(0, 80)}`;
-      console.warn(`  ${c.slug}: ${e.message}`);
+  // Boards first, always: their postings are the reference for every feed.
+  const fetchable = companies.filter((c) => BOARDS[c.board_kind]);
+  const fetched = await byHost(fetchable, (c) => hostKey(c.board_kind, c.board_token), (c) => fetchBoard(c.board_kind, c.board_token), {
+    gapOf: (host) => gapMs(host),
+  });
+  let answered = 0;
+  let failedBoards = 0;
+  const firstPolled = [];
+  for (const [c, res] of fetched) {
+    if (res.error) {
+      failedBoards++;
+      // The message names the board's URL; it goes to the database (per person, protected), never the Actions log.
+      status[c.slug] = `failed: ${String(res.error.message || res.error.code || 'error').slice(0, 80)}`;
+      detailWarn(`  ${c.slug}: ${res.error.message}`);
       continue;
     }
-
-    let kept = 0;
-    for (const p of postings) {
-      if (!relevant.test(p.title) || exclude.test(p.title)) continue;
-      const scored = scoreFor(
-        { title: p.title, company: c.name, location: p.location, description: p.description },
-        profile
-      );
-      const id = `${c.board_kind}:${c.board_token}:${p.nativeId}`;
-      const eligible = eligibleFor(p.location, scored.remote, scored.germanRequired, profile);
-      const row = {
-        id,
-        source: c.board_kind,
-        company_slug: c.slug,
-        company: c.name,
-        title: p.title,
-        url: p.url,
-        location: p.location || null,
-        workplace_type: /remote/i.test(p.location || '') ? 'Remote' : null,
-        posted_date: p.postedAt ? p.postedAt.slice(0, 10) : null,
-        excerpt: p.description.slice(0, 400) || null,
-        score: scored.total,
-        score_breakdown: scored.breakdown,
-        score_notes: scored.notes,
-        german_required: scored.germanRequired,
-        remote: scored.remote ?? null,
-        eligible,
-        closed: false,
-        last_seen_at: new Date().toISOString(),
-      };
-      rows.push(row);
-      fullById.set(id, { text: p.fullText || null });
-      kept++;
-      if (!existing.has(id) && eligible && scored.total >= min) fresh.push(row);
-    }
-    console.log(`  ${c.slug.padEnd(18)} ${String(postings.length).padStart(4)} posting(s), ${kept} relevant`);
-    await sleep(600);
+    answered++;
+    const postings = res.value;
+    status[c.slug] = postings.length;
+    if (!c.board_baselined_at) firstPolled.push(c);
+    const kept = processBoard(st, c, postings);
+    detail(`  ${c.slug.padEnd(18)} ${String(postings.length).padStart(4)} posting(s), ${kept} relevant`);
   }
 
-  // Remote Rocketship: newest twenty across many employers, most of them not on
-  // any board we poll. Companies it names that the console has never seen are
-  // created minimally so the foreign key holds; logos can follow.
-  // The URL encodes her titles, so anyone else polls it only with their own.
-  const newCompanies = new Map();
-  const rrUrl = profile.remoteRocketshipUrl || (primary ? RR_URL : null);
-  if (rrUrl) try {
-    const rr = await fetchRemoteRocketship(rrUrl);
-    let kept = 0;
-    let dup = 0;
-    for (const p of rr) {
-      if (!relevant.test(p.title) || exclude.test(p.title)) continue;
-      const urlKey = (p.url || '').replace(/\/+$/, '').toLowerCase();
-      const id = `rr:${p.nativeId}`;
-      if (urlKey && knownUrls.has(urlKey) && !existing.has(id)) { dup++; continue; }
-      const slug = (p.company.slug || p.company.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      if (!slug) continue;
-      const scored = scoreFor({ title: p.title, company: p.company.name, location: p.location, description: p.description }, profile);
-      const germanRequired = p.germanFlag || scored.germanRequired;
-      const eligible = eligibleFor(p.location, p.remote, germanRequired, profile);
-      newCompanies.set(slug, { slug, name: p.company.name || slug, domain: p.company.homepage ? p.company.homepage.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : null });
-      const row = {
-        id,
-        source: 'remoterocketship',
-        company_slug: slug,
-        company: p.company.name || slug,
-        title: p.title,
-        url: p.url,
-        location: p.location || null,
-        workplace_type: p.remote ? 'Remote' : null,
-        posted_date: p.postedAt ? p.postedAt.slice(0, 10) : null,
-        excerpt: p.description.slice(0, 400) || null,
-        score: scored.total,
-        score_breakdown: scored.breakdown,
-        score_notes: { ...scored.notes, language: p.languageNote ? `${p.languageNote}${germanRequired ? ' (GERMAN REQUIRED)' : ''}` : scored.notes.language, ghost: p.ghostScore != null ? `Remote Rocketship ghost score ${p.ghostScore}` : undefined },
-        german_required: germanRequired,
-        remote: p.remote,
-        eligible,
-        closed: false,
-        last_seen_at: new Date().toISOString(),
-      };
-      rows.push(row);
-      fullById.set(id, { text: null, summary: p.description });
-      kept++;
-      if (!existing.has(id) && eligible && scored.total >= min) fresh.push(row);
+  // Feeds. One failing never stops another or the boards, and a failed feed's rows are untouched.
+  const [stateRow] = activeFeeds.length ? await db.select('settings', '?select=value&key=eq.feed_state') : [];
+  const feedState = { ...(stateRow?.value || {}) };
+  const feedsFirst = [];
+  const feedAnswered = [];
+  for (const [feed, cfg] of activeFeeds) {
+    try {
+      const listings = await memoFeed(feed, cfg);
+      const firstRun = !feedState[feed.id]?.baselined_at && !known.some((k) => k.source === feed.id);
+      const counts = ingestFeed(feed, listings, st, { firstRun });
+      status[`feed:${feed.id}`] = `${counts.listed} listed, ${counts.kept} kept, ${counts.board} on a board, ${counts.known} known, ${counts.copy} copies`;
+      detail(`  ${feed.id.padEnd(18)} ${String(counts.listed).padStart(4)} listing(s), ${counts.relevant} relevant, ${counts.kept} kept, ${counts.board} on an employer board`);
+      feedAnswered.push(feed);
+      if (firstRun) feedsFirst.push(feed);
+    } catch (e) {
+      status[`feed:${feed.id}`] = `failed: ${String(e.message || 'error').slice(0, 80)}`;
+      detailWarn(`  ${feed.id}: ${e.message}`);
     }
-    status.remoterocketship = `${rr.length} listed, ${kept} relevant, ${dup} already known from a board`;
-    console.log(`  ${'remoterocketship'.padEnd(18)} ${String(rr.length).padStart(4)} listing(s), ${kept} relevant, ${dup} duplicate(s) of board postings`);
-  } catch (e) {
-    status.remoterocketship = `failed: ${e.message.slice(0, 80)}`;
-    console.warn(`  remoterocketship: ${e.message}`);
   }
 
+  const { rows, fresh, fullById } = st;
   rows.sort((a, b) => b.score - a.score);
+  fresh.sort((a, b) => b.score - a.score); // the cap keeps the best, not the first
+
   if (args['dry-run']) {
-    console.log(`\n${rows.length} relevant, ${fresh.length} new and eligible at ${min}+`);
+    console.log(`\n${rows.length} relevant, ${fresh.length} new and eligible at ${min}+, ${st.counts.backlogNew} already open`);
+    console.log(`boards: ${answered} answered, ${failedBoards} failed`);
     for (const r of rows.filter((x) => x.eligible).slice(0, 12)) {
-      console.log(`  ${String(r.score).padStart(3)}  ${r.company.padEnd(14)} ${r.title.slice(0, 48).padEnd(50)} ${r.location.slice(0, 26)}`);
+      detail(`  ${String(r.score).padStart(3)}  ${r.company.padEnd(14)} ${r.title.slice(0, 48).padEnd(50)} ${(r.location || '').slice(0, 26)}${r.backlog ? '  (already open)' : ''}`);
     }
     return;
   }
 
-  // A row already in the table keeps whatever she decided in the console.
-  // Every row must carry an explicit status, not only the known ones: the
-  // batch upsert gives all rows the same key set, so a new posting sitting
-  // beside preserved rows would otherwise be sent with status null, and an
-  // explicit null beats the column default. That is how the first genuinely
-  // new posting after the import (a Stripe role on 22 Sep) failed the whole
-  // daily run with "null value in column status".
   // Companies first, or the jobs insert fails its foreign key. Only slugs the
   // console has never seen are written, so nothing existing is overwritten.
-  if (newCompanies.size) {
-    const have = new Set((await db.select('companies', '?select=slug')).map((c) => c.slug));
-    const missing = [...newCompanies.values()].filter((c) => !have.has(c.slug));
-    if (missing.length) await db.upsert('companies', missing, { onConflict: 'owner,slug' });
-  }
+  const missing = [...st.newCompanies.values()].filter((c) => !st.haveSlugs.has(c.slug));
+  if (missing.length) await db.upsert('companies', missing, { onConflict: 'owner,slug' });
 
-  const keep = await db.select('jobs', '?select=id,company_slug,status,applied_at,notes');
-  const byId = new Map(keep.map((k) => [k.id, k]));
-  for (const r of rows) {
-    const prev = byId.get(r.id);
-    r.status = prev?.status ?? 'found';
-    r.applied_at = prev?.applied_at ?? null;
-    r.notes = prev?.notes ?? null;
-  }
+  // Every row carries an explicit status and backlog (decideRow): the batch
+  // upsert gives all rows the same key set, so a new posting beside preserved
+  // rows would otherwise be sent with null, and an explicit null beats the
+  // column default.
   await db.upsert('jobs', rows, { onConflict: 'owner,id' });
 
   // A board posting that disappeared is closed, not deleted: she may have applied.
   // Only when its board actually answered this run: a Datadog timeout once
   // closed all 25 of its open roles, because "not seen" was read as "gone".
+  // A failed, timed out or paused board has a string status, so it closes nothing.
   const seen = new Set(rows.map((r) => r.id));
-  const answered = new Set(Object.entries(status).filter(([, v]) => typeof v === 'number').map(([k]) => k));
-  const stale = keep
-    .filter((k) => /^(greenhouse|ashby|lever|teamtailor):/.test(k.id) && !seen.has(k.id) && answered.has(k.company_slug))
+  const answeredSlugs = new Set(Object.entries(status).filter(([k, v]) => typeof v === 'number' && !k.startsWith('feed:')).map(([k]) => k));
+  const stale = known
+    .filter((k) => BOARD_ID.test(k.id) && !k.closed && !seen.has(k.id) && answeredSlugs.has(k.company_slug))
     .map((k) => ({ id: k.id, closed: true }));
+  const staleIds = new Set(stale.map((s) => s.id));
+  for (const id of st.superseded) if (!staleIds.has(id)) { stale.push({ id, closed: true }); staleIds.add(id); }
+  // A feed's own rows close after staleDays unseen, and only when that feed answered this run.
+  for (const feed of feedAnswered) {
+    if (!feed.staleDays) continue;
+    const cutoff = now - feed.staleDays * 86_400_000;
+    for (const k of known) {
+      if (k.source !== feed.id || k.closed || seen.has(k.id) || staleIds.has(k.id)) continue;
+      if (!['found', 'saved'].includes(k.status)) continue;
+      if (Date.parse(k.last_seen_at) < cutoff) { stale.push({ id: k.id, closed: true }); staleIds.add(k.id); }
+    }
+  }
   if (stale.length) await db.updateEach('jobs', 'id', stale);
+
+  // Failure streaks: counted on change only. At 14 the company asks to be probed again,
+  // since the board may have moved.
+  const streaks = [];
+  for (const [c, res] of fetched) {
+    const n = c.board_fail_count || 0;
+    if (res.error && !['host_paused'].includes(res.error.code)) {
+      streaks.push({ slug: c.slug, board_fail_count: n + 1, ...(n + 1 === 14 ? { next_probe_at: nowIso } : {}) });
+    } else if (!res.error && n > 0) streaks.push({ slug: c.slug, board_fail_count: 0 });
+  }
+  if (streaks.length) await db.updateEach('companies', 'slug', streaks);
+
+  // Boards read for the first time are protected from now on.
+  if (firstPolled.length) await db.updateEach('companies', 'slug', firstPolled.map((c) => ({ slug: c.slug, board_baselined_at: nowIso })));
+  if (feedAnswered.length) {
+    for (const f of feedAnswered) feedState[f.id] = { baselined_at: feedState[f.id]?.baselined_at || nowIso };
+    await db.upsert('settings', [{ key: 'feed_state', value: feedState, updated_at: nowIso }], { onConflict: 'owner,key' });
+  }
 
   // Full posting text for the resume drafts: hers only, and never allowed to fail the poll.
   if (primary) {
@@ -559,9 +606,30 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
       { onConflict: 'owner,dedupe_key' }
     );
   }
+  const sources = firstPolled.length + feedsFirst.length;
+  if (sources) {
+    const n = st.counts.backlogNew;
+    await db.upsert(
+      'notifications',
+      [{
+        kind: 'boards_added',
+        severity: 'news',
+        title: `${sources} new job source${sources === 1 ? '' : 's'} added`,
+        body: `${n} role${n === 1 ? '' : 's'} there were already open, so they did not ping you.`,
+        url: n ? '/jobs?view=backlog' : '/jobs',
+        entity_ref: 'boards',
+        dedupe_key: `boards_added:${nowIso.slice(0, 10)}`,
+      }],
+      { onConflict: 'owner,dedupe_key' }
+    );
+  }
 
-  console.log(`\n${rows.length} relevant role(s), ${fresh.length} new above ${min}, ${stale.length} closed`);
-  await finish(true, { relevant: rows.length, new: fresh.length, closed: stale.length, boards: status });
+  console.log(`boards: ${answered} answered, ${failedBoards} failed`);
+  console.log(`${rows.length} relevant role(s), ${fresh.length} new above ${min}, ${stale.length} closed, ${st.counts.backlogNew} already open`);
+  await finish(true, {
+    relevant: rows.length, new: fresh.length, closed: stale.length, backlog: st.counts.backlogNew,
+    skipped_ineligible: st.counts.skippedIneligible, boards: status,
+  });
 }
 
 // Run only when invoked directly. scripts/rescore-linkedin.mjs imports
@@ -572,7 +640,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   main()
     .then(() => setTimeout(() => process.exit(0), 200))
     .catch((e) => {
-      console.error(e.message);
+      console.error(isLocal() ? e.message : safeCode(e));
       setTimeout(() => process.exit(1), 200);
     });
 }
