@@ -22,6 +22,11 @@ const text = 'I debugged REST and webhook issues for customers. CANARY_ANS_x7';
 
 function answerFor(q) {
   const base = { q: q.id, cls: 'drafted', bank_key: '', text, from: ['r1.b1'], option_ids: [], asked_terms: [] };
+  const prod = (t) => ({ ...base, cls: 'product', from: [], text: t });
+  if (/PRODUCTOK/.test(q.label)) return prod('Group the metric by day of week, and verify the setting name in the documentation. CANARY_ANS_x7');
+  if (/PRODUCTURL/.test(q.label)) return prod('See https://example.test/docs for the limit.');
+  if (/PRODUCTCLAIM/.test(q.label)) return prod('In my experience this works. I have used it daily.');
+  if (/PRODUCTYOUR/.test(q.label)) return prod('Group the metric by day of week.');
   if (/BADNUM/.test(q.label)) return { ...base, text: 'I handled 999 tickets.' };
   if (/n8n|Terraform/.test(q.label)) return { ...base, from: ['s2'] };
   if (q.options?.length) return { ...base, text: '', from: ['s1'], option_ids: [q.options[0].id] };

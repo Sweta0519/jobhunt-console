@@ -156,3 +156,95 @@ test('her own edits get soft flags only', () => {
   for (const c of ['number_not_in_source', 'contact_or_url', 'long_dash', 'personal_fact']) assert.ok(codesOf.includes(c), c);
   assert.deepEqual(checkEditedText({ text: 'I debugged REST issues.', master, job: syntheticJob, description: posting }), []);
 });
+
+// ---- product answers: general knowledge, no CV evidence, never about the candidate ----
+const prod = (form, i, o = {}) => ans(form, i, {
+  cls: 'product', from: [], asked_terms: [],
+  text: 'Yes. Group the metric by day of week, then check the product documentation for the exact setting name.', ...o,
+});
+const SUPPORT = 'Is it possible to break down a metric by weekday in Quartzbridge?';
+
+test('a clean product answer needs no evidence and carries one soft unverified_product flag', () => {
+  const f = setup([long(SUPPORT)]);
+  const r = run(f, [prod(f, 0, { text: 'The limit is 5000 requests. Call widget.reset(PROJECT_ID) and verify it in the documentation.' })]);
+  assert.deepEqual(r.hard, []);
+  assert.deepEqual(r.soft.map((s) => s.code), ['unverified_product'], 'no posting_term or proper_noun on product answers');
+});
+
+test('a product answer with a URL, email, handle or phone becomes a hard flag', () => {
+  const f = setup([long(SUPPORT)]);
+  for (const bad of ['See https://example.test/docs for it.', 'Ask help@example.test about it.', 'Ping @someone for it.', 'Call +49 30 1234 5678.', 'See docs.example.com now.']) {
+    assert.ok(codes(run(f, [prod(f, 0, { text: bad })])).includes('contact_or_url'), bad);
+  }
+});
+
+test('a first-person experience claim in a product answer is hard, a plain offer is not', () => {
+  const f = setup([long(SUPPORT)]);
+  for (const bad of ['I have used this for years.', "I've set this up before.", 'In my experience it works.', 'At my last job we did this. My team used it.', 'I worked with it daily.', 'Ich habe das schon benutzt.']) {
+    assert.ok(codes(run(f, [prod(f, 0, { text: bad })])).includes('experience_claim'), bad);
+  }
+  for (const ok of ["I'd check the project settings first.", 'I can help with that: open the settings and verify the name.']) {
+    assert.deepEqual(run(f, [prod(f, 0, { text: ok })]).hard, [], ok);
+  }
+});
+
+test('we, our and experience phrasing in a product answer are hard, whole words only', () => {
+  const f = setup([long(SUPPORT)]);
+  for (const bad of ['At Sauce Labs we debugged this by checking the batch size.', 'We used this in production and it works well.', 'Our team relies on batching for this.', 'Having worked with this daily, batching groups events.', 'From experience, batching groups events.', "We've seen it.", `We${cp(0x2019)}re fine with it.`, 'In practice it groups events.', 'In our experience it works.', 'Having used it, batching helps.', 'Aus Erfahrung gruppiert es Events.', 'Wir nutzen das.', 'Unser Team prueft das.', 'Ours is set up.']) {
+    assert.ok(codes(run(f, [prod(f, 0, { text: bad })])).includes('experience_claim'), bad);
+  }
+  for (const ok of ['I would check the batch size setting in the documentation.', "I'd check the settings", 'I can help', 'The power of the tour, an hour to answer: wire it up in the settings.']) {
+    assert.deepEqual(run(f, [prod(f, 0, { text: ok })]).hard, [], ok);
+  }
+});
+
+test('an employer from the master in a product answer is hard, unless in the label or the job company', () => {
+  const f = setup([long(SUPPORT)]);
+  for (const bad of ['This is how it worked at Acme Gadgets: batch the events.', 'globex testing used batching.', 'Batch the events (Acme Gadgets does this).']) {
+    assert.ok(codes(run(f, [prod(f, 0, { text: bad })])).includes('experience_claim'), bad);
+  }
+  assert.deepEqual(run(f, [prod(f, 0, { text: 'Batching groups events for Initech Widgets.' })]).hard, [], 'job company');
+  assert.deepEqual(run(f, [prod(f, 0, { text: 'Batching groups events for Acme Gadgetsmith.' })]).hard, [], 'whole name only');
+  assert.deepEqual(run(f, [prod(f, 0, { text: 'Zendesk and SQL group events by day.' })]).hard, [], 'skills are not employers');
+  const g = setup([long('Can Acme Gadgets exports be grouped by weekday?')]);
+  assert.deepEqual(run(g, [prod(g, 0, { text: 'Acme Gadgets exports can be grouped by weekday: check the documentation.' })]).hard, [], 'name in the label');
+});
+
+test('a pay or visa mention, a long dash and real markup in a product answer are hard', () => {
+  const f = setup([long(SUPPORT)]);
+  assert.ok(codes(run(f, [prod(f, 0, { text: 'The salary field is hidden.' })])).includes('personal_fact'));
+  assert.ok(codes(run(f, [prod(f, 0, { text: `Try this ${cp(0x2014)} then retry.` })])).includes('long_dash'));
+  for (const bad of ['Use <b>bold</b> text.', '<script>x</script>', 'See [docs](page).', '![x](y)', '<img src=x>']) {
+    assert.ok(codes(run(f, [prod(f, 0, { text: bad })])).includes('markup'), bad);
+  }
+});
+
+test('code-like text is not markup for a product answer', () => {
+  const f = setup([long(SUPPORT)]);
+  for (const ok of ['Set <PROJECT_ID> to your project.', 'Call client.capture(PROJECT_ID) once.', 'Read items[0](arg) and a < b.']) {
+    assert.deepEqual(run(f, [prod(f, 0, { text: ok })]).hard, [], ok);
+  }
+});
+
+test('a label that addresses the candidate cannot be a product question', () => {
+  for (const label of ['Describe your experience with webhook retries', 'Have you used Quartzbridge exports?', 'Tell us about a rate limit you handled', 'Why do you want this role?', 'Describe a time a customer asked about limits', 'Haben Sie Erfahrung mit Exporten?', 'Was sind deine Stärken bei Webhooks?', 'Experience with Quartzbridge exports']) {
+    const f = setup([long(label)]);
+    assert.deepEqual(codes(run(f, [prod(f, 0)])), ['product_blocked'], label);
+  }
+  for (const label of ['We are seeing 429 errors. How can the client side limit be raised?', 'Is it possible to export data by weekday?', 'How do we delete PII from a person property?']) {
+    const f = setup([long(label)]);
+    assert.deepEqual(run(f, [prod(f, 0)]).hard, [], label);
+  }
+});
+
+test('a select question may not be a product answer', () => {
+  const f = setup([{ label: 'Which export format works?', kind: 'single_select', options: ['CSV', 'JSON'] }]);
+  assert.deepEqual(codes(run(f, [prod(f, 0, { text: '' })])), ['product_blocked']);
+  assert.deepEqual(codes(run(f, [prod(f, 0, { text: '', option_ids: ['o0'] })])), ['product_blocked']);
+});
+
+test('tool_unsupported does not apply to a product answer but still applies to a drafted one', () => {
+  const f = setup([long('Is it possible to run Kubernetes jobs per weekday?'), long('Do you have experience with Kubernetes?')]);
+  assert.deepEqual(run(f, [prod(f, 0, { asked_terms: ['Kubernetes'] })]).hard, []);
+  assert.ok(codes(run(f, [ans(f, 1, { asked_terms: ['Kubernetes'] })])).includes('tool_unsupported'));
+});

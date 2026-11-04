@@ -179,6 +179,47 @@ test('one failed answer keeps the others; the model is asked once more, with cod
   });
 });
 
+test('product answers: stored with cls product, a candidate question cannot be product, nothing leaks', async () => {
+  const form = formWith([
+    { label: 'Is it possible to chart PRODUCTOK by weekday?', kind: 'long_text' },
+    { label: 'Describe your experience with PRODUCTYOUR exports', kind: 'long_text' },
+  ]);
+  await scenario({ form }, async ({ state, url, calls }) => {
+    const r = await exec(draftArgs, url, { env: draftEnv });
+    assert.equal(r.code, 0, r.out);
+    noCanary(r.out, 'product');
+    assert.equal(calls(), 1, 'a blocked product answer is not retried');
+    const d = draftOf(state);
+    const f = state.tables.application_forms[0].form;
+    const ok = answerOf(d, 'Is it possible', f);
+    assert.equal(ok.cls, 'product');
+    assert.ok(ok.text.includes(ANS), 'stored, only never logged');
+    assert.equal(ok.from, undefined);
+    assert.deepEqual([answerOf(d, 'Describe your', f).cls, answerOf(d, 'Describe your', f).why], ['needs_you', 'product_blocked']);
+    assert.ok(d.fact_flags.some((x) => x.code === 'unverified_product' && x.ref === 'a.' + ok.q));
+    assert.ok(!d.fact_flags.some((x) => x.ref === 'a.' + ok.q && ['proper_noun', 'posting_term'].includes(x.code)));
+    assert.match(r.out, /product_q=1/);
+  });
+});
+
+test('a product answer with a URL or an experience claim becomes needs_you after one retry', async () => {
+  const form = formWith([
+    { label: 'Is it possible to raise PRODUCTURL limits?', kind: 'long_text' },
+    { label: 'How does PRODUCTCLAIM batching work?', kind: 'long_text' },
+  ]);
+  await scenario({ form }, async ({ state, url, calls }) => {
+    const r = await exec(draftArgs, url, { env: draftEnv });
+    assert.equal(r.code, 0, r.out);
+    noCanary(r.out, 'product bad');
+    assert.equal(calls(), 2);
+    const d = draftOf(state);
+    const f = state.tables.application_forms[0].form;
+    assert.deepEqual([answerOf(d, 'Is it possible', f).cls, answerOf(d, 'Is it possible', f).why], ['needs_you', 'facts_failed']);
+    assert.deepEqual([answerOf(d, 'How does', f).cls, answerOf(d, 'How does', f).why], ['needs_you', 'facts_failed']);
+    assert.match(r.out, /product_q=0/);
+  });
+});
+
 test('a tool the CV does not name is forced to needs_you and is not retried', async () => {
   await scenario({}, async ({ state, url, calls }) => {
     await exec(draftArgs, url, { env: draftEnv });

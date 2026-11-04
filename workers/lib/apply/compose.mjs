@@ -30,7 +30,7 @@ export const coverText = (paragraphs) => paragraphs.map((p) => p.text).join('\n\
  * @param {{ form: any, rules: { items: any[] }, output: any | null, failed?: Map<string, string>, cover?: string }} input
  *   failed  question id to why code for answers that still had a hard flag
  *   cover   the finished cover letter text, or '' when none was made
- * @returns {{ answers: any[], counts: { fixed: number, drafted: number, need: number, blank: number } }}
+ * @returns {{ answers: any[], counts: { fixed: number, drafted: number, need: number, blank: number, product: number } }}
  */
 export function composeAnswers({ form, rules, output, failed = new Map(), cover = '' }) {
   const rule = new Map(rules.items.map((i) => [i.q, i]));
@@ -50,10 +50,14 @@ export function composeAnswers({ form, rules, output, failed = new Map(), cover 
     if (a.cls === 'drafted') {
       if (!a.text && !a.option_ids.length) answers.push({ q: q.id, cls: 'needs_you', why: 'no_answer' });
       else answers.push({ q: q.id, cls: 'drafted', text: a.text, option_ids: a.option_ids, from: a.from });
+    } else if (a.cls === 'product') {
+      // General knowledge, no CV source. Never a select: option_ids stays empty.
+      if (!a.text) answers.push({ q: q.id, cls: 'needs_you', why: 'no_answer' });
+      else answers.push({ q: q.id, cls: 'product', text: a.text });
     } else if (a.cls === 'fixed') answers.push({ q: q.id, cls: 'fixed', bank_key: a.bank_key, by_model: true });
     else if (a.cls === 'blank') answers.push({ q: q.id, cls: 'blank' });
     else answers.push({ q: q.id, cls: 'needs_you', why: 'model' });
   }
   const count = (cls) => answers.filter((a) => a.cls === cls).length;
-  return { answers, counts: { fixed: count('fixed'), drafted: count('drafted'), need: count('needs_you'), blank: count('blank') } };
+  return { answers, counts: { fixed: count('fixed'), drafted: count('drafted'), need: count('needs_you'), blank: count('blank'), product: count('product') } };
 }

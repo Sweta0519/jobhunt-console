@@ -385,7 +385,7 @@ async function draft(db, { dry, bin, binArgs }) {
             hard = facts.hard;
             soft = facts.soft;
             // A tool the CV does not name is forced to needs_you, never retried.
-            const retry = hard.filter((h) => h.code !== 'tool_unsupported');
+            const retry = hard.filter((h) => h.code !== 'tool_unsupported' && h.code !== 'product_blocked');
             if (!retry.length) break;
             feedback = buildFeedback(retry);
           }
@@ -398,7 +398,9 @@ async function draft(db, { dry, bin, binArgs }) {
           if (h.ref.startsWith('cover.')) coverFailed = true;
           else if (h.ref.startsWith('a.')) {
             const q = h.ref.slice(2);
-            if (sent.includes(q) && failed.get(q) !== 'tool_unsupported') failed.set(q, h.code === 'tool_unsupported' ? 'tool_unsupported' : 'facts_failed');
+            if (sent.includes(q) && !['tool_unsupported', 'product_blocked'].includes(failed.get(q))) {
+              failed.set(q, ['tool_unsupported', 'product_blocked'].includes(h.code) ? h.code : 'facts_failed');
+            }
           }
         }
         if (sent.length && !output) for (const q of sent) failed.set(q, 'schema_invalid');
@@ -408,7 +410,7 @@ async function draft(db, { dry, bin, binArgs }) {
         const suspicious = rules.suspicious || output?.suspicious_instructions === true || soft.some((s) => s.code === 'suspicious_posting');
         const generation = (row.generation || 0) + 1;
 
-        let counts = { fixed: 0, drafted: 0, need: 0, blank: 0 };
+        let counts = { fixed: 0, drafted: 0, need: 0, blank: 0, product: 0 };
         if (coverOnly) {
           const keep = (row.fact_flags || []).filter((f) => !String(f.ref).startsWith('cover.'));
           await patchRow(row.id, {
@@ -436,7 +438,7 @@ async function draft(db, { dry, bin, binArgs }) {
         });
         summary.drafted++;
         event('draft', {
-          job: hashId(row.job_id), qs: sent.length, fixed: counts.fixed, drafted_q: counts.drafted, need: counts.need, blank: counts.blank,
+          job: hashId(row.job_id), qs: sent.length, fixed: counts.fixed, drafted_q: counts.drafted, need: counts.need, blank: counts.blank, product_q: counts.product,
           cover: cover ? 1 : 0, hard: hard.length, soft: soft.length,
         });
         streak = 0;

@@ -138,7 +138,7 @@ export const ANSWER_SCHEMA = {
       required: ['q', 'cls', 'bank_key', 'text', 'from', 'option_ids', 'asked_terms'],
       properties: {
         q: str(16),
-        cls: { enum: ['drafted', 'needs_you', 'blank', 'fixed'] },
+        cls: { enum: ['drafted', 'needs_you', 'blank', 'fixed', 'product'] },
         bank_key: { enum: ['', ...BANK_KEYS] },
         text: { type: 'string', maxLength: 3000 },
         from: { type: 'array', maxItems: 8, items: str(12) },

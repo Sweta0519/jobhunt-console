@@ -21,6 +21,22 @@ const GENERIC = new Set(['tool', 'tools', 'technology', 'technologies', 'softwar
   'language', 'languages', 'framework', 'frameworks', 'application', 'applications', 'development', 'engineering', 'similar',
   'related', 'other', 'others', 'such', 'etc', 'stack', 'workflow', 'workflows', 'tooling', 'environment', 'environments']);
 
+// A product answer is a technical explanation, never a claim about the candidate.
+// A label that addresses the candidate (whole words, English and German) cannot be
+// a product question, whatever the model says. "We are..." and "Is it possible..."
+// pass. A customer style label with "your" inside a quoted scenario fails safe.
+const CANDIDATE_LABEL = /\b(you|your|yours|yourself|you're|you've|you'd|you'll|tell us|tell me|describe a time|walk us through|walk me through|du|dich|dir|dein\w*|sie|ihnen|ihre\w*|ihr|euch|eure\w*|erz[aä]hl\w*|beschreiben)\b/i;
+// What a product answer may not claim: the candidate's own use or experience. A plain
+// offer ("I'd check", "I can help") is a normal support reply and stays allowed.
+const PRODUCT_CLAIM = /\bi(?:'ve| have| had| was)\b|\bi(?:'m| am) (?:a|an|the|currently|familiar|experienced|proficient|skilled|certified|working|using)\b|\bi (?:used|worked|built|managed|led|implemented|deployed|maintained|supported|developed|wrote|created|ran|handled|debugged|configured|tested|shipped|owned|designed|migrated|integrated|resolved|fixed|solved|use|work|build|maintain|manage)\b|\bmy\b|\bmine\b|\bich (?:habe|hatte|war|bin|nutze|nutzte|benutze|benutzte|arbeite|arbeitete|entwickelte|baute|verwende|verwendete|betreute|setzte)\b|\bmein(?:e|em|en|er|es)?\b/i;
+// Also never in a product answer, fail safe: "we"/"our" (a product answer has no need for them),
+// and experience phrasing that implies the candidate used the product. Whole words only.
+const PRODUCT_WE = /\b(?:we|our|ours|wir|unser\w*)\b/i;
+const PRODUCT_EXPERIENCE = /\bfrom (?:\w+ )?experience\b|\bin practice\b|\bin (?:my|our) experience\b|\bhaving (?:used|worked|built|run|seen|managed|deployed|maintained|supported|developed|handled|debugged|configured|tested|set up|implemented|dealt|owned|designed|migrated|integrated|resolved|fixed|solved)\b|\baus (?:\w+ )?erfahrung\b|\bin der praxis\b|\b(?:nach|in) (?:meiner|unserer) erfahrung\b/i;
+// Real HTML tags, comments, images and Markdown links. Narrower than MARKUP, which
+// also rejects code-like text such as <PROJECT_ID> or fn[0](x).
+const PRODUCT_MARKUP = /<\/?(?:a|abbr|b|base|body|br|button|center|code|div|em|embed|font|footer|form|h[1-6]|head|header|hr|html|i|iframe|img|input|li|link|meta|nav|noscript|object|ol|p|pre|script|section|select|span|strong|style|svg|table|td|textarea|th|title|tr|u|ul|video)(?=[\s/>])|<[!?]|!\[|(?<![\w\])])\[[^\]\n]*\]\([^)\n]*\)|\{\{|javascript:|[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/i;
+
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const TOKEN_OK = /^[\w.+%-]{1,40}$/;
 
@@ -58,12 +74,16 @@ function context(master, job, description) {
   const postingWords = new Set(words(description).map((w) => w.toLowerCase()));
   const own = new Set([...words(job.company), ...words(job.title)].map((w) => w.toLowerCase()));
   const { src, ids } = masterIndex(master);
+  // Employers from the master (experience[].company), minus the job's own company.
+  const company = String(job.company || '').trim().toLowerCase();
+  const employers = [...new Set((master.experience || []).map((r) => String(r.company || '').trim()).filter((c) => c.length >= 3))]
+    .filter((c) => c.toLowerCase() !== company);
   return {
     text, lower: text.toLowerCase(), vocab, vocabStem, poolOf, masterPool: poolOf(text), src, ids,
     masterMonths: new Set([...vocab].filter((w) => MONTH_NAMES.test(w)).map((w) => w.slice(0, 3))),
     masterYears: new Set(text.match(/\b(?:19|20)\d{2}\b/g) || []),
     postingWords, postingStems: new Set([...postingWords].map(stem)), own,
-    company: String(job.company || '').trim().toLowerCase(),
+    company, employers,
   };
 }
 
@@ -111,6 +131,23 @@ function scan(ref, text, from, ctx, H, S, charLimit) {
   if (charLimit && text.length > charLimit) S('over_char_limit', ref);
 }
 
+/** The checks for a product answer: no evidence needed, but nothing about the candidate. */
+function scanProduct(ref, text, label, ctx, H, S, charLimit) {
+  if (PRODUCT_MARKUP.test(text)) H('markup', ref);
+  if (LONG_DASH.test(text)) H('long_dash', ref);
+  for (const u of urls(text)) H('contact_or_url', ref, u);
+  const personal = PERSONAL.exec(text);
+  if (personal) H('personal_fact', ref, personal[1].toLowerCase());
+  const plain = text.replace(/[‘’]/g, "'");
+  if (PRODUCT_CLAIM.test(plain) || PRODUCT_WE.test(plain) || PRODUCT_EXPERIENCE.test(plain)) H('experience_claim', ref);
+  // A past employer or customer named in a product answer implies experience. The product in
+  // the question is not a claim, so a name that is in the label is skipped.
+  const named = (name, t) => new RegExp(`(^|[^\\p{L}\\p{N}])${esc(name)}($|[^\\p{L}\\p{N}])`, 'iu').test(t);
+  if (ctx.employers.some((e) => named(e, text) && !named(e, label))) H('experience_claim', ref);
+  S('unverified_product', ref);
+  if (charLimit && text.length > charLimit) S('over_char_limit', ref);
+}
+
 /**
  * checkAnswers({ answers, cover, form, master, job, description, sent })
  *   answers  the model's answers after dash normalisation
@@ -146,6 +183,14 @@ export function checkAnswers({ answers = [], cover = [], form, master, job = {},
     if (a.cls === 'fixed') {
       if (!a.bank_key) H('schema_invalid', ref);
       else S('fixed_by_model', ref, a.bank_key);
+      continue;
+    }
+    if (a.cls === 'product') {
+      const optioned = q.kind === 'single_select' || q.kind === 'multi_select';
+      // Not a product question: it addresses the candidate, asks about their experience
+      // with a tool, or has fixed choices. Forced to needs_you, never retried.
+      if (optioned || (a.option_ids || []).length || CANDIDATE_LABEL.test(q.label) || TOOL_Q.test(q.label)) H('product_blocked', ref);
+      else scanProduct(ref, a.text || '', q.label, ctx, H, S, q.char_limit);
       continue;
     }
     if (a.cls !== 'drafted') continue;

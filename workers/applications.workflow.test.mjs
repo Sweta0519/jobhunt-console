@@ -174,7 +174,7 @@ test('the browser side never uses dangerouslySetInnerHTML or the service role ke
 
 test('the new status words live in StatusBadge, the only place a status word is printed', () => {
   const ui = read('app/components/ui.tsx');
-  for (const key of ['ans_ready', 'ans_edited', 'ans_needs_you', 'ans_blank', 'ans_upload', 'form_partial']) assert.match(ui, new RegExp(`${key}:`));
+  for (const key of ['ans_ready', 'ans_check', 'ans_edited', 'ans_needs_you', 'ans_blank', 'ans_upload', 'form_partial']) assert.match(ui, new RegExp(`${key}:`));
   for (const f of walk(join(root, 'app/resumes')).filter((p) => /.tsx$/.test(p))) {
     assert.ok(!/className="badge /.test(readFileSync(f, 'utf8')), `${relative(root, f)} prints its own badge`);
   }

@@ -50,7 +50,7 @@ export async function ApplicationTab({
 
   const answers = new Map((draft?.answers ?? []).map((a) => [a.q, a]))
   const edits = (draft?.edits ?? {}) as Record<string, Edit>
-  const flagsOf = (qId: string) => (draft?.fact_flags ?? []).filter((x) => x.ref === `a.${qId}`).map((x) => answerFlagCopy(x.code))
+  const flagsOf = (qId: string) => (draft?.fact_flags ?? []).filter((x) => x.ref === `a.${qId}` && x.code !== 'unverified_product').map((x) => answerFlagCopy(x.code))
   const shown = new Map<string, Shown>(questions.map((q) => [q.id, describe(q, answers.get(q.id), edits[q.id], bank)]))
   const count = (...b: Shown['badge'][]) => [...shown.values()].filter((s) => b.includes(s.badge)).length
 
@@ -68,6 +68,7 @@ export async function ApplicationTab({
       {answered && formRead && (
         <nav className="summary-strip" aria-label="Answer summary">
           <span className="pill"><span className="num">{count('ans_ready', 'ans_edited')}</span><StatusBadge status="ans_ready" /></span>
+          {count('ans_check') > 0 && <span className="pill"><span className="num">{count('ans_check')}</span><StatusBadge status="ans_check" /></span>}
           <span className="pill"><span className="num">{count('ans_needs_you')}</span><StatusBadge status="ans_needs_you" /></span>
           <span className="pill"><span className="num">{count('ans_blank', 'ans_upload')}</span><StatusBadge status="ans_blank" /></span>
         </nav>

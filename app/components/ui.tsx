@@ -47,6 +47,7 @@ export function StatusBadge({ status }: { status: string }) {
 
     // application answers: teal stays reserved for what really happened, so none of these use it
     ans_ready: { tone: 'inert', glyph: '✓', label: 'Ready' },
+    ans_check: { tone: 'wait', glyph: '◷', label: 'Check this' },
     ans_edited: { tone: 'inert', glyph: '✎', label: 'Edited' },
     ans_needs_you: { tone: 'fail', glyph: '▲', label: 'Needs you' },
     ans_blank: { tone: 'inert', glyph: '·', label: 'Left for you' },

@@ -51,7 +51,7 @@ test('rules and model answers are joined in form order', () => {
   assert.equal(by(3).cls, 'blank');
   assert.equal(by(4).cls, 'upload');
   assert.deepEqual([by(5).cls, by(5).bank_key, by(5).by_model], ['fixed', 'city', true]);
-  assert.deepEqual(r.counts, { fixed: 3, drafted: 1, need: 1, blank: 1 });
+  assert.deepEqual(r.counts, { fixed: 3, drafted: 1, need: 1, blank: 1, product: 0 });
 });
 
 test('one bad answer never loses the rest', () => {
@@ -84,4 +84,20 @@ test('a cover letter question gets the finished letter, or needs you when there 
 test('coverText joins paragraphs and caps the length', () => {
   assert.equal(coverText([{ text: 'a' }, { text: 'b' }]), 'a\n\nb');
   assert.equal(coverText([{ text: 'x'.repeat(COVER_MAX + 50) }]).length, COVER_MAX);
+});
+
+test('a product answer is kept as cls product, an empty one needs you, and it is counted', () => {
+  const { form } = validateForm({ source: 'greenhouse', completeness: 'complete', questions: [
+    { label: 'Is it possible to chart by weekday?', kind: 'long_text' },
+    { label: 'Can the limit be raised?', kind: 'long_text' },
+  ] });
+  const rules = { items: [] };
+  const mk = (q, text) => ({ q: q.id, cls: 'product', bank_key: '', text, from: [], option_ids: [], asked_terms: [] });
+  const output = { answers: [mk(form.questions[0], 'Yes, group by day of week.'), mk(form.questions[1], '')], cover_letter: { paragraphs: [] } };
+  const r = composeAnswers({ form, rules, output });
+  assert.deepEqual(r.answers[0], { q: form.questions[0].id, cls: 'product', text: 'Yes, group by day of week.' });
+  assert.deepEqual([r.answers[1].cls, r.answers[1].why], ['needs_you', 'no_answer']);
+  assert.equal(r.counts.product, 1);
+  const failed = composeAnswers({ form, rules, output, failed: new Map([[form.questions[0].id, 'product_blocked']]) });
+  assert.deepEqual([failed.answers[0].cls, failed.answers[0].why], ['needs_you', 'product_blocked']);
 });

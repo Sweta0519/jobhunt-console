@@ -41,7 +41,7 @@ export type AppForm = {
 }
 export type Answer = {
   q: string
-  cls: 'drafted' | 'needs_you' | 'blank' | 'fixed' | 'upload'
+  cls: 'drafted' | 'needs_you' | 'blank' | 'fixed' | 'upload' | 'product'
   bank_key?: string
   text?: string
   option_ids?: string[]
@@ -122,6 +122,8 @@ export const WHY_COPY: Record<string, string> = {
   no_answer: 'No answer was drafted for this question.',
   model: 'Your CV does not support an answer.',
   sensitive: 'Left for you on purpose.',
+  polarity: 'The wording makes yes or no unclear. Answer this one yourself.',
+  product_blocked: 'This question is about you or has fixed choices, so it was left for you.',
 }
 export const whyCopy = (w?: string) => (w && WHY_COPY[w]) || 'Not drafted. Add your own answer.'
 
@@ -139,12 +141,16 @@ export const ANSWER_FLAG_COPY: Record<string, string> = {
   posting_term: 'A word from the posting that your CV does not use.',
   over_char_limit: 'Longer than the form allows.',
   suspicious_posting: 'The posting contains text aimed at AI tools.',
+  unverified_product: 'Written from general knowledge. Test it before you use it.',
   fixed_by_model: 'The question was matched to a saved answer by the drafting model. Check the match.',
 }
 export const answerFlagCopy = (code: string) => ANSWER_FLAG_COPY[code] || 'Check this item against your CV.'
 
+/** The one fixed line on a product answer. */
+export const PRODUCT_NOTE = 'Written from general knowledge, not your CV. Test it before you use it.'
+
 export type Shown = {
-  badge: 'ans_ready' | 'ans_edited' | 'ans_needs_you' | 'ans_blank' | 'ans_upload'
+  badge: 'ans_ready' | 'ans_check' | 'ans_edited' | 'ans_needs_you' | 'ans_blank' | 'ans_upload'
   text: string
   optionIds: string[]
   hint: string | null
@@ -165,16 +171,17 @@ export function describe(q: Question, a: Answer | undefined, edit: Edit | undefi
     badge, text, optionIds, hint: null, note: null, editable: false, copyText: text, ...rest,
   })
   const hasEdit = !!edit && (!!edit.text || !!edit.option_ids?.length)
-  const edited = (): Shown => {
+  const edited = (note: string | null = null): Shown => {
     const ids = edit?.option_ids ?? []
     const text = ids.length ? labelsOf(q, ids).join(', ') : (edit?.text ?? '')
-    return out('ans_edited', text, ids, { editable: true })
+    return out('ans_edited', text, ids, { editable: true, note })
   }
 
   if (!a) return hasEdit ? edited() : out('ans_needs_you', '', [], { editable: true, note: whyCopy('no_answer') })
   if (a.cls === 'blank') return out('ans_blank')
   if (a.cls === 'upload') return out('ans_upload')
-  if (hasEdit) return edited()
+  if (hasEdit) return edited(a.cls === 'product' ? PRODUCT_NOTE : null)
+  if (a.cls === 'product') return out('ans_check', a.text ?? '', [], { editable: true, note: PRODUCT_NOTE })
   if (a.cls === 'needs_you') return out('ans_needs_you', '', [], { editable: true, note: whyCopy(a.why) })
   if (a.cls === 'drafted') {
     const ids = a.option_ids ?? []
