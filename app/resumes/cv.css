@@ -12,7 +12,10 @@
 .cv h1 { font-size: 20pt; line-height: 1.1; margin: 0 0 2px; font-weight: 700; letter-spacing: 0; color: #111; }
 .cv .cv-tagline { font-size: 10.5pt; margin: 0 0 3px; }
 .cv .cv-contact { font-size: 9pt; margin: 0 0 6px; }
-.cv .cv-contact a { white-space: nowrap; } /* a URL split over two lines reads wrong in PDF text and ATS parsers */
+/* Each item stays whole, because a URL split over two lines reads wrong in PDF text and ATS parsers.
+   inline-block keeps a break point between items: nowrap on the links alone makes the row one
+   unbreakable run, which widens the page and makes the browser shrink the whole CV to fit. */
+.cv .cv-contact > span { display: inline-block; white-space: nowrap; }
 .cv .cv-sep { margin: 0 6px; color: #777; }
 .cv h2 { font-size: 10pt; text-transform: uppercase; letter-spacing: 0.06em; margin: 9px 0 3px; padding-bottom: 1px; border-bottom: 1px solid #111; font-weight: 700; color: #111; }
 .cv p { margin: 0 0 3px; }
