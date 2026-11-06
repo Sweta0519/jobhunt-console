@@ -531,9 +531,15 @@ async function pollFor(db, profile, primary, args, min, relevant, exclude, finis
     }
   }
 
-  const { rows, fresh, fullById } = st;
-  rows.sort((a, b) => b.score - a.score);
-  fresh.sort((a, b) => b.score - a.score); // the cap keeps the best, not the first
+  const { fullById } = st;
+  // One id twice in a batch upsert fails the whole poll with a 500 ("ON CONFLICT
+  // DO UPDATE command cannot affect row a second time"). A board or feed can list
+  // the same posting twice; after the sort the first copy is the best scored.
+  const uniq = (list) => { const ids = new Set(); return list.filter((r) => !ids.has(r.id) && ids.add(r.id)); };
+  const byScore = (a, b) => b.score - a.score;
+  const rows = uniq(st.rows.sort(byScore));
+  const fresh = uniq(st.fresh.sort(byScore)); // the cap keeps the best, not the first
+  if (rows.length < st.rows.length) console.log(`  ${st.rows.length - rows.length} duplicate posting(s) dropped`);
 
   if (args['dry-run']) {
     console.log(`\n${rows.length} relevant, ${fresh.length} new and eligible at ${min}+, ${st.counts.backlogNew} already open`);
