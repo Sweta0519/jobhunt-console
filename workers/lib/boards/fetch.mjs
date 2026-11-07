@@ -9,6 +9,7 @@
 
 import { UA } from '../sources.mjs';
 import { cleanText, leverFullText } from '../resume/text.mjs';
+import { opensToGermanyEU } from '../jobfit/jobfit.mjs';
 import { validToken } from './hosts.mjs';
 import { isoOrNull } from './policy.mjs';
 
@@ -77,6 +78,27 @@ export function parsePersonio(xml, token) {
     .filter((p) => p.nativeId && p.title);
 }
 
+/**
+ * Location text for the scorer: the posting's own place names plus its country
+ * names, never the company's. A country the text already names is not repeated.
+ * When the description itself opens the role to Germany/EU/EMEA/anywhere, the
+ * address country is dropped: Ashby often defaults it to the company HQ.
+ */
+export function withCountries(parts, countries, remote, descText) {
+  const out = [];
+  const add = (v) => { const t = String(v || '').trim(); if (t && !out.some((o) => o.toLowerCase().includes(t.toLowerCase()))) out.push(t); };
+  parts.forEach(add);
+  if (!opensToGermanyEU(descText)) countries.forEach(add);
+  return [out.join(', '), remote ? 'Remote' : ''].filter(Boolean).join(' ');
+}
+
+/** ISO 3166 alpha-2 ("US") to a country name; anything else passes through. */
+function countryName(c) {
+  const t = String(c || '').trim();
+  if (!/^[A-Za-z]{2}$/.test(t)) return t;
+  try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(t.toUpperCase()) || t; } catch { return t; }
+}
+
 /** Each reader returns { name, careersUrl, postings }. */
 const READERS = {
   async greenhouse(token) {
@@ -105,7 +127,12 @@ const READERS = {
         nativeId: String(x.id),
         title: x.title,
         url: x.jobUrl,
-        location: [x.location, x.isRemote ? 'Remote' : ''].filter(Boolean).join(' '),
+        location: withCountries(
+          [x.location, ...(x.secondaryLocations || []).map((l) => l.location)],
+          [x.address?.postalAddress?.addressCountry, ...(x.secondaryLocations || []).map((l) => l.address?.postalAddress?.addressCountry)],
+          x.isRemote,
+          strip(x.descriptionHtml || x.descriptionPlain)
+        ),
         description: strip(x.descriptionHtml || x.descriptionPlain),
         fullText: cleanText(x.descriptionHtml || x.descriptionPlain),
         html: String(x.descriptionHtml || ''),
@@ -121,7 +148,12 @@ const READERS = {
         nativeId: String(x.id),
         title: x.text,
         url: x.hostedUrl,
-        location: x.categories?.location || '',
+        location: withCountries(
+          [x.categories?.location],
+          [countryName(x.country)],
+          false,
+          strip(x.descriptionPlain || x.description)
+        ),
         description: strip(x.descriptionPlain || x.description),
         fullText: leverFullText(x),
         html: String(x.description || ''),

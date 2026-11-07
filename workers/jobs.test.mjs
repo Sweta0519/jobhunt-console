@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RELEVANT, CLEARLY_NOT, titleFilters, withDefaults, scoreFor, eligibleFor, storeDescriptions } from './jobs.mjs';
+import { RELEVANT, CLEARLY_NOT, eligibleFrom, titleFilters, withDefaults, scoreFor, eligibleFor, storeDescriptions } from './jobs.mjs';
 import { locationFit } from './lib/jobfit/jobfit.mjs';
 
 const keeps = (title) => RELEVANT.test(title) && !CLEARLY_NOT.test(title);
@@ -206,4 +206,47 @@ test('a PostHog-shaped bare-remote posting clears the 70 cutoff', () => {
   assert.equal(s.breakdown.location, 12);
   assert.ok(s.total >= 70, 'total ' + s.total);
   assert.equal(eligibleFor(job.location, s.remote, s.germanRequired, withDefaults({})), true);
+});
+
+// Country from the board API is appended to the location text. All text invented.
+import { withCountries } from './lib/boards/fetch.mjs';
+const ashbyLoc = (loc, countries, desc = '', secondary = []) => withCountries([loc, ...secondary], countries, true, desc);
+const elig = (loc) => eligibleFrom(loc, true, false);
+
+test('Ashby Remote + United States is 0 and not eligible', () => {
+  const loc = ashbyLoc('Remote', ['United States'], 'Open to working the East Coast hours.', ['East']);
+  assert.equal(loc, 'Remote, East, United States Remote');
+  assert.equal(fit(loc, 'Open to working the East Coast hours.'), 0);
+  assert.equal(elig(loc), false);
+  assert.match(locationFit({ title: 'X', location: loc, description: '' }, withDefaults({})).label, /United States only/);
+});
+
+test('Ashby Remote + Germany is full score and eligible', () => {
+  const loc = ashbyLoc('Remote', ['Germany']);
+  assert.equal(fit(loc), 20);
+  assert.equal(elig(loc), true);
+});
+
+test('Ashby Remote + no country stays at 12 and eligible', () => {
+  const loc = ashbyLoc('Remote', []);
+  assert.equal(fit(loc, 'Help customers.'), 12);
+  assert.equal(elig(loc), true);
+});
+
+test('a secondary location in Germany among others is allowed', () => {
+  const loc = ashbyLoc('Remote', ['United States'], '', ['Germany', 'Canada']);
+  assert.equal(elig(loc), true);
+  assert.equal(fit(loc), 20);
+});
+
+test('US address but text says remote within EMEA is allowed (Ashby defaults to HQ)', () => {
+  const desc = 'This role is remote within EMEA.';
+  assert.equal(ashbyLoc('Remote', ['United States'], desc), 'Remote Remote');
+  assert.equal(fit('Remote, United States Remote', desc), 19);
+  assert.equal(fit('Remote Remote', desc), 19);
+  assert.equal(fit('Remote, Worldwide'), 12);
+});
+
+test('US time zone phrases in the text mark a bare remote as US-only', () => {
+  assert.equal(fit('Remote Remote', 'Must overlap US time zones.'), 0);
 });

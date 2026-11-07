@@ -84,7 +84,9 @@ export function detectGerman(text) {
 
 // ---------- Location / remote fit
 // Description text that confirms a remote role is open in Germany or EU-wide.
-const CONFIRMS_GERMANY_EU = /\b(germany|deutschland|anywhere in (the )?(eu|europe|emea)|across (the )?(eu|europe|emea)|any (eu|european) country|eu[- ]wide|europe[- ]wide|emea[- ]wide|all (eu|european) countries|remote (across|within|in) (the )?(eu|europe|emea)|europe,? (the )?middle east, ?(and|or) africa)\b/;
+const CONFIRMS_GERMANY_EU = /\b(germany|deutschland|anywhere in (the )?(eu|europe|emea)|across (the )?(eu|europe|emea)|any (eu|european) country|eu[- ]wide|europe[- ]wide|emea[- ]wide|all (eu|european) countries|remote (across|within|in) (the )?(eu|europe|emea)|europe,? (the )?middle east, ?(and|or) africa)\b|\b(remote|work|working|hire|hiring)\b[^.\n]{0,25}\b(worldwide|anywhere in the world|from anywhere)\b/;
+// True when the posting text itself opens a remote role to Germany, the EU, EMEA or anywhere.
+export function opensToGermanyEU(text) { return CONFIRMS_GERMANY_EU.test(String(text || '').toLowerCase()); }
 export function locationFit(job, profile) {
   const loc = String(job.location || '').toLowerCase();
   const wt = String(job.workplaceType || '').toLowerCase();
@@ -99,17 +101,25 @@ export function locationFit(job, profile) {
   const L = profile.locations;
   const inRegion = L.remoteRegions.some((r) => loc.includes(r)) || /\bemea\b|\beurope\b/.test(title);
   const okCountry = L.okCountriesRemote.some((c) => loc.includes(c));
-  const usOnly = /\b(united states|usa|u\.s\.|canada)\b/.test(loc) || /\b(us[- ]based only|must be (located|based) in the (us|united states)|authorized to work in the (us|united states))\b/.test(desc);
+  // A US/Canada word in the location only ties the role down when nothing in the
+  // posting's own locations (Germany, EU, Europe, EMEA, worldwide) or its text
+  // opens it up: Ashby often defaults the address country to the HQ.
+  const locUs = /\b(united states( of america)?|usa|u\.s\.|us|canada)\b/.test(loc);
+  const locOpen = /\b(germany|deutschland|eu|eea|europe|european union|emea|dach|worldwide|anywhere)\b/.test(loc);
+  const descOpen = CONFIRMS_GERMANY_EU.test(desc);
+  const descUs = /\b(us[- ]based only|must be (located|based) in the (us|united states)|authorized to work in the (us|united states)|(east|west) coast hours|(us|u\.s\.) time ?zones?|(est|pst|cst|eastern|pacific|central) (hours|time ?zone))\b/.test(desc);
+  const usOnly = (locUs && !locOpen && !descOpen) || descUs;
   const home = L.hybridOkCities.some((c) => loc.includes(c));
   // A location that is only the word remote ("Remote", "Remote Remote", "Fully remote"): no country named. Eligibility passes it, so scoring must not zero it.
   const bare = remote && loc.replace(/\b(remote|fully|100%|distributed|work from home|wfh|home ?office)\b|[^a-z]+/g, ' ').trim() === '';
   const shown = bare ? 'Remote' : job.location;
   let score, label;
-  if (remote && usOnly) { score = 0; label = 'remote, but US/Canada only'; }
+  if (remote && usOnly) { score = 0; label = /canada/.test(loc) && !/united states|usa|\bus\b/.test(loc) ? 'remote, Canada only' : locUs ? 'remote, United States only' : 'remote, but US/Canada only'; }
   else if (remote && (loc.includes('germany') || loc.includes('deutschland'))) { score = 20; label = 'remote, Germany'; }
   // "Europe, the Middle East, or Africa" spelled out is EMEA, and postings that
   // write it that way were being treated as unconfirmed. Hercules' EMEA support
   // role says "people living in Europe, the middle east, or Africa".
+  else if (remote && locUs && !locOpen && descOpen) { score = 19; label = `remote, address says ${job.location} but text confirms Germany/EU-wide`; }
   else if (remote && (inRegion || bare) && CONFIRMS_GERMANY_EU.test(desc)) { score = 19; label = `remote, ${shown}, text confirms Germany/EU-wide`; }
   else if (remote && inRegion) { score = 12; label = `remote, "${job.location}" is only LinkedIn's tag; text does not confirm hiring in Germany, verify with the poster`; }
   else if (remote && /\b(germany|deutschland)\b/.test(desc) && /\b(emea|europe|european|eu[- ]wide|across the eu|anywhere in the eu|any eu country|following (countries|places|locations))\b/.test(desc)) { score = 14; label = `remote, posted for ${job.location} but text names Germany among allowed countries; verify`; }
