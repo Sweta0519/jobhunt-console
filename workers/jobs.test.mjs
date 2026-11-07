@@ -250,3 +250,11 @@ test('US address but text says remote within EMEA is allowed (Ashby defaults to 
 test('US time zone phrases in the text mark a bare remote as US-only', () => {
   assert.equal(fit('Remote Remote', 'Must overlap US time zones.'), 0);
 });
+
+test('EU and US time zones together in the text keep a bare remote eligible', () => {
+  const desc = "We provide support across EU and US time zones, and we're hiring in both.";
+  const r = locationFit({ title: 'Technical Support Engineer', location: 'Remote Remote', description: desc }, withDefaults({}));
+  assert.ok(r.score > 0, 'score ' + r.score);
+  assert.equal(r.score, 19);
+  assert.doesNotMatch(r.label, /US\/Canada only/);
+});

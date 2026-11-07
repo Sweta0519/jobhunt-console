@@ -108,7 +108,11 @@ export function locationFit(job, profile) {
   const locOpen = /\b(germany|deutschland|eu|eea|europe|european union|emea|dach|worldwide|anywhere)\b/.test(loc);
   const descOpen = CONFIRMS_GERMANY_EU.test(desc);
   const descUs = /\b(us[- ]based only|must be (located|based) in the (us|united states)|authorized to work in the (us|united states)|(east|west) coast hours|(us|u\.s\.) time ?zones?|(est|pst|cst|eastern|pacific|central) (hours|time ?zone))\b/.test(desc);
-  const usOnly = (locUs && !locOpen && !descOpen) || descUs;
+  // US hours wording only ties the role down when the text does not also name
+  // EU/Europe hours or hiring: PostHog's "support across EU and US time zones,
+  // and we're hiring in both" was zeroed by "US time zones" alone.
+  const descEuToo = /\b(eu|europe|european|emea|germany|cet|cest)\b[^.\n]{0,60}\b(time ?zones?|hours|hiring)\b|\b(hiring|time ?zones?)\b[^.\n]{0,60}\b(eu|europe|european|emea)\b/.test(desc);
+  const usOnly = (locUs && !locOpen && !descOpen) || (descUs && !descOpen && !descEuToo);
   const home = L.hybridOkCities.some((c) => loc.includes(c));
   // A location that is only the word remote ("Remote", "Remote Remote", "Fully remote"): no country named. Eligibility passes it, so scoring must not zero it.
   const bare = remote && loc.replace(/\b(remote|fully|100%|distributed|work from home|wfh|home ?office)\b|[^a-z]+/g, ' ').trim() === '';
