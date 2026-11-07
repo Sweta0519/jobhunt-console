@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { requirePrimary, flagCopy, reasonCopy, type ResumeDraft, type MasterDoc, type FactFlag } from '../../lib/resumes'
+import { requirePrimary, flagCopy, flagWhere, reasonCopy, type ResumeDraft, type MasterDoc, type FactFlag } from '../../lib/resumes'
 import { NavBar, StatusBadge, ExternalLink, Section } from '../../components/ui'
 import { ActionButton } from '../../components/ActionButton'
 import { Logo } from '../../components/Logo'
@@ -323,12 +323,16 @@ export default async function ResumeReview({
           <div id="flags" className="anchor">
           <Section title="Flags" hint="Check these against your CV before you approve.">
             <div className="card">
-              {d.fact_flags!.map((f, i) => (
-                <p key={i} style={{ margin: '0 0 6px' }}>
-                  {flagCopy(f.code)}{f.token ? <> <code>{f.token}</code></> : null}{' '}
-                  <span className="card-meta">{f.ref}</span>
-                </p>
-              ))}
+              {d.fact_flags!.map((f, i) => {
+                const w = flagWhere(f.ref, doc)
+                return (
+                  <p key={i} style={{ margin: '0 0 6px' }}>
+                    {flagCopy(f.code)}{f.token ? <> <code>{f.token}</code></> : null}{' '}
+                    <span className="card-meta">{w.where}</span>
+                    {w.text ? <> <q className="card-meta">{w.text}</q></> : null}
+                  </p>
+                )
+              })}
             </div>
           </Section>
           </div>

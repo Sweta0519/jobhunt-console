@@ -81,3 +81,59 @@ export const FLAG_COPY: Record<string, string> = {
   schema_invalid: 'The draft came back malformed.',
 }
 export const flagCopy = (code: string) => FLAG_COPY[code] || 'Check this item against your CV.'
+
+const clip = (s: string | undefined | null) => {
+  if (!s) return null
+  const t = s.trim()
+  return t.length > 120 ? t.slice(0, 119).trimEnd() + '…' : t
+}
+
+// Turn an internal flag ref (e.g. "skills.s6.1") into a readable location plus the flagged text.
+export function flagWhere(ref: string, doc: ResumeDoc | null): { where: string; text: string | null } {
+  const gone = ' (changed since the check)'
+  const parts = ref.split('.')
+  const head = parts[0]
+  const idx = parts[2] !== undefined && /^\d+$/.test(parts[2]) ? Number(parts[2]) : null
+  const whole = (w: string) => ({ where: w, text: null })
+  switch (head) {
+    case 'tagline': return { where: 'Headline (tagline)', text: clip(doc?.tagline) }
+    case 'summary': return { where: 'Summary', text: clip(doc?.summary) }
+    case 'posting': return whole('The job posting')
+    case 'doc': return whole('Whole CV')
+    case 'a': return whole('Application answer')
+    case 'cover': {
+      const n = Number(parts[1])
+      return whole(Number.isFinite(n) ? `Cover letter, paragraph ${n + 1}` : 'Cover letter')
+    }
+    case 'open_source': {
+      const i = Number(parts[1])
+      if (!Number.isInteger(i)) return whole(ref)
+      const b = doc?.open_source?.[i]
+      return b ? { where: `Open source, item ${i + 1}`, text: clip(b.text) } : whole(`Open source, item ${i + 1}${gone}`)
+    }
+    case 'skills': {
+      const g = doc?.skills?.find(s => s.id === parts[1])
+      if (!g) return whole(`Skills › ${parts[1] ?? ''}${doc ? gone : ''}`.trimEnd())
+      if (idx === null) return whole(`Skills › ${g.label}`)
+      const it = g.items[idx]
+      return it !== undefined ? { where: `Skills › ${g.label}, item ${idx + 1}`, text: clip(it) } : whole(`Skills › ${g.label}, item ${idx + 1}${gone}`)
+    }
+    case 'experience': {
+      const r = doc?.experience?.find(e => e.id === parts[1])
+      if (!r) return whole(`Experience › ${parts[1] ?? ''}${doc ? gone : ''}`.trimEnd())
+      const label = `Experience › ${r.title} at ${r.company}`
+      if (idx === null) return whole(label)
+      const b = r.bullets[idx]
+      return b ? { where: `${label}, bullet ${idx + 1}`, text: clip(b.text) } : whole(`${label}, bullet ${idx + 1}${gone}`)
+    }
+    case 'projects': {
+      const p = doc?.projects?.find(x => x.id === parts[1])
+      if (!p) return whole(`Projects › ${parts[1] ?? ''}${doc ? gone : ''}`.trimEnd())
+      const label = `Projects › ${p.title}`
+      if (idx === null) return whole(label)
+      const b = p.bullets[idx]
+      return b ? { where: `${label}, bullet ${idx + 1}`, text: clip(b.text) } : whole(`${label}, bullet ${idx + 1}${gone}`)
+    }
+    default: return whole(ref)
+  }
+}
