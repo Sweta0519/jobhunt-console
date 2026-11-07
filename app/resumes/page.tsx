@@ -38,7 +38,10 @@ export default async function Resumes({ searchParams }: { searchParams: Promise<
   const drafts = (rows as Row[]) || []
   const ids = [...new Set(drafts.map((d) => d.job_id))]
   const { data: jobRows } = ids.length
+    // A role rescored out of her region (e.g. US-only) drops its draft from every tab,
+    // unless she already acted on it.
     ? await supabase.from('jobs').select('id,company,company_slug,title,score,closed,status,url,careers_url').in('id', ids)
+        .or('eligible.eq.true,german_required.eq.true,status.not.in.(found,saved)')
     : { data: [] as JobLite[] }
   const jobs = new Map(((jobRows as JobLite[]) || []).map((j) => [j.id, j]))
   const logos = new Map((cos || []).map((c) => [c.slug as string, c.logo_path as string | null]))
