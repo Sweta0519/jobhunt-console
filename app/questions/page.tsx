@@ -18,9 +18,12 @@ export default async function Questions({
 
   let query = supabase.from('questions').select('*').eq('status', 'new')
   if (sp.company) query = query.eq('company', sp.company)
-  const [{ data }, { data: cos }] = await Promise.all([
+  // Chips count every open question, not just the top 200 by rank: a company
+  // whose questions all rank low would otherwise have no chip at all.
+  const [{ data }, { data: cos }, { data: allOpen }] = await Promise.all([
     query.order('rank', { ascending: false }).limit(200),
     supabase.from('companies').select('slug,logo_path'),
+    supabase.from('questions').select('company').eq('status', 'new').limit(5000),
   ])
   const logos = new Map((cos || []).map((c) => [c.slug, c.logo_path as string | null]))
 
@@ -30,7 +33,7 @@ export default async function Questions({
   const shown = sp.all || sp.company ? rows.slice(0, 60) : pickQuestions(rows, 20, 3)
   const starred = rows.filter((q) => q.starred)
 
-  const byCompany = rows.reduce<Record<string, number>>((acc, q) => {
+  const byCompany = ((allOpen as { company: string | null }[]) || []).reduce<Record<string, number>>((acc, q) => {
     const k = q.company || 'general'
     acc[k] = (acc[k] || 0) + 1
     return acc
