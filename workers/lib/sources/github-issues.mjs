@@ -8,7 +8,11 @@ export async function fetchIssues(token, entry, { sinceDate }) {
   // and both gates would have kept it out of the queue forever.
   const gates = entry.invited ? 'comments:<6' : `comments:0 created:>${sinceDate}`;
   const q = `repo:${entry.repo} is:issue is:open ${gates}${entry.label ? ` label:"${entry.label}"` : ''}`;
-  const items = await searchIssues(token, q);
+  // outsidersOnly: repos where staff plan in public (PostHog). Staff with a
+  // private org membership show as CONTRIBUTOR, not MEMBER, so only authors
+  // with no prior history in the repo count as outside users.
+  const OUTSIDER = new Set(['NONE', 'FIRST_TIMER', 'FIRST_TIME_CONTRIBUTOR']);
+  const items = (await searchIssues(token, q)).filter((it) => !entry.outsidersOnly || OUTSIDER.has(it.author_association));
   return items.map((it) => ({
     id: `gh-issue:${entry.repo}#${it.number}`, source: 'gh-issue', site: `${entry.repo} Issues`, company: entry.company, bugTracker: !!entry.bugTracker,
     title: it.title, url: it.html_url, excerpt: (it.body || '').replace(/\s+/g, ' ').trim().slice(0, 200), author: it.user?.login || '',

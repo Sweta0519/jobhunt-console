@@ -12,6 +12,7 @@ export const COMPANY_WEIGHT = {
   clickhouse: 10,
   docker: 10,
   vercel: 10,
+  posthog: 10,
   n8n: 5,
   camunda: 5,
   stripe: 5,
@@ -47,6 +48,12 @@ export const SOURCES = {
     // server SDKs are generated from a private OpenAPI spec, require a CLA, and
     // took between zero and one new issue in the last thirty days.
     { repo: 'stripe/stripe-cli', company: 'stripe', label: '', bugTracker: true },
+    // PostHog has no GitHub Discussions; its forum (posthog.com/questions) runs on
+    // a Strapi backend that returned 500 when probed on 2026-11-11, so only the
+    // issue trackers for now: ~670 new issues a month on posthog, ~50 on posthog-js.
+    // Most are staff planning tickets, so outsidersOnly keeps user reports only.
+    { repo: 'PostHog/posthog', company: 'posthog', label: '', bugTracker: true, outsidersOnly: true },
+    { repo: 'PostHog/posthog-js', company: 'posthog', label: '', bugTracker: true, outsidersOnly: true },
     // Work Supabase maintainers have explicitly opened to outsiders. These are
     // the issues they stage on their public Open Source Maintainers board,
     // which cannot be read directly without a read:project scope. Deliberately
@@ -63,6 +70,7 @@ export const SOURCES = {
     { tag: 'n8n', company: 'n8n' },
     { tag: 'camunda', company: 'camunda' },
     { tag: 'vercel', company: 'vercel' },
+    { tag: 'posthog', company: 'posthog' },
     // `stripe-payments` is the live tag; a bare `stripe` tag returns nothing.
     // It is broad enough to need the keyword filter, the way `docker` does.
     { tag: 'stripe-payments', company: 'stripe', requireKeyword: true },
