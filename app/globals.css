@@ -200,7 +200,10 @@ a:hover { text-decoration-color: currentColor; }
     border-radius: 9px; background: var(--wait); color: var(--surface); font-size: 10.5px; font-weight: 600;
     display: inline-flex; align-items: center; justify-content: center;
   }
-  /* Tapping the backdrop hits the summary, which closes the sheet. */
+  /* Tapping the backdrop hits the summary, which closes the sheet.
+     backdrop-filter makes .tabbar the containing block for fixed children,
+     which would shrink the backdrop to the bar, so drop it while open. */
+  .tabbar:has(.tab-more[open]) { backdrop-filter: none; background: var(--surface); }
   .tab-more[open] > summary::before { content: ''; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.25); z-index: -1; }
   .more-sheet {
     position: fixed; left: 8px; right: 8px; bottom: calc(68px + env(safe-area-inset-bottom));
