@@ -164,6 +164,12 @@ export async function NavBar({ current, waiting }: { current: string; waiting: n
       <header className="topbar">
         <div className="topbar-inner">
           <Link href="/" className="brand">
+            <svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true">
+              <path d="M23 15v-4.5a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4V15" fill="none" stroke="#1f6c9f" strokeWidth="4.5" />
+              <rect x="3" y="14" width="58" height="46" rx="11" fill="#1f6c9f" />
+              <path d="M17 28.5l9.5 8-9.5 8" fill="none" stroke="#fff" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M32.5 44.5h14" stroke="#9fd6f7" strokeWidth="5.5" strokeLinecap="round" />
+            </svg>
             Jobhunt
           </Link>
           <span className="bell-mobile">

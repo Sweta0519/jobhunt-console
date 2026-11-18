@@ -120,6 +120,7 @@ a:hover { text-decoration-color: currentColor; }
 }
 .brand {
   font-weight: 600; letter-spacing: -0.02em; text-decoration: none; font-size: 15px;
+  display: inline-flex; align-items: center; gap: 8px;
 }
 .navlinks { display: flex; gap: 2px; margin-left: auto; flex-wrap: wrap; align-items: center; }
 .navlink {
