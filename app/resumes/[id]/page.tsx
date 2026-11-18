@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requirePrimary, flagCopy, flagWhere, reasonCopy, type ResumeDraft, type MasterDoc, type FactFlag } from '../../lib/resumes'
-import { NavBar, StatusBadge, ExternalLink, Section } from '../../components/ui'
+import { NavBar, PageHeader, StatusBadge, ExternalLink, Section } from '../../components/ui'
 import { ActionButton } from '../../components/ActionButton'
 import { Logo } from '../../components/Logo'
 import { Editable } from '../Editable'
@@ -64,11 +64,11 @@ export default async function ResumeReview({
     pathOf: (i: number) => string,
     who: string
   ) => (
-    <ul style={{ margin: '6px 0', paddingLeft: 18 }}>
+    <ul className="card-list spaced">
       {list.map((b, i) => {
         b.from.forEach((f) => cited.add(f))
         return (
-          <li key={i} style={{ marginBottom: 8 }}>
+          <li key={i}>
             {live ? (
               <Editable initial={b.text} limit={260} label={`${who} bullet ${i + 1}`} onSave={editResumeField.bind(null, d.id, pathOf(i))}>
                 <Diffed text={b.text} from={textOf(b.from)} flagged={tokens(pathOf(i))} />
@@ -111,19 +111,19 @@ export default async function ResumeReview({
           )}
         </div>
 
-        <div className="spread">
-          <h1 style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Logo name={job.company} slug={job.company_slug} path={co?.logo_path as string | null | undefined} size={36} />
-            {job.title}
-          </h1>
-          <span className="score num">{job.score ?? '-'}</span>
-        </div>
-        <div className="row" style={{ marginBottom: 14 }}>
-          <span className="card-meta">{job.company}</span>
-          <StatusBadge status={d.status === 'draft' ? 'draft_ready' : d.status} />
-          {job.closed && <span className="chip">closed</span>}
-          {(job.careers_url || job.url) && <ExternalLink href={(job.careers_url || job.url)!}>Open posting</ExternalLink>}
-        </div>
+        <PageHeader
+          compact
+          lead={<Logo name={job.company} slug={job.company_slug} path={co?.logo_path as string | null | undefined} size={36} />}
+          title={job.title}
+          actions={<span className="score num">{job.score ?? '-'}</span>}
+        >
+          <div className="row">
+            <span className="card-meta">{job.company}</span>
+            <StatusBadge status={d.status === 'draft' ? 'draft_ready' : d.status} />
+            {job.closed && <span className="chip">closed</span>}
+            {(job.careers_url || job.url) && <ExternalLink href={(job.careers_url || job.url)!}>Open posting</ExternalLink>}
+          </div>
+        </PageHeader>
 
         <nav className="row resume-tabs" aria-label="Resume or application">
           <Link className="chip rtab" href={`/resumes/${d.id}`} aria-current={tab === 'cv' ? 'page' : undefined}>Resume</Link>
@@ -194,7 +194,7 @@ export default async function ResumeReview({
               <details className="posting-fold" open>
                 <summary><h2>Posting</h2></summary>
                 <div className="card">
-                  <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}>
+                  <div className="text-pre">
                     {desc?.description || 'The posting text is not available.'}
                   </div>
                 </div>
@@ -229,10 +229,10 @@ export default async function ResumeReview({
                 )}
               </div>
 
-              <div className="card">
+              <div className="card stack">
                 <h3 className="card-title">Skills</h3>
                 {doc.skills.map((g) => (
-                  <div key={g.id} style={{ marginBottom: 8 }}>
+                  <div key={g.id}>
                     {live ? (
                       <Editable initial={g.items.join(', ')} limit={800} label={`${g.label} skills`} onSave={editResumeField.bind(null, d.id, `skills.${g.id}`)}>
                         <b>{g.label}:</b> {g.items.join(', ')}
@@ -244,10 +244,10 @@ export default async function ResumeReview({
                 ))}
               </div>
 
-              <div className="card">
+              <div className="card stack">
                 <h3 className="card-title">Experience</h3>
                 {doc.experience.map((r) => (
-                  <div key={r.id} style={{ marginBottom: 10 }}>
+                  <div key={r.id}>
                     <b>{r.title}</b>
                     <div className="card-meta">{r.company} · {r.location} · {r.dates}</div>
                     {bulletsOf(r.bullets, (i) => `experience.${r.id}.${i}`, r.title)}
@@ -263,10 +263,10 @@ export default async function ResumeReview({
               )}
 
               {doc.projects.length > 0 && (
-                <div className="card">
+                <div className="card stack">
                   <h3 className="card-title">Projects</h3>
                   {doc.projects.map((p) => (
-                    <div key={p.id} style={{ marginBottom: 10 }}>
+                    <div key={p.id}>
                       <b>{p.title}</b>
                       <div className="card-meta">{p.meta}</div>
                       {bulletsOf(p.bullets, (i) => `projects.${p.id}.${i}`, p.title)}
@@ -290,9 +290,9 @@ export default async function ResumeReview({
         {(d.requirements?.length ?? 0) > 0 && (
           <div id="requirements" className="anchor">
           <Section title="Requirements">
-            <div className="card">
+            <div className="card stack tight">
               {d.requirements!.map((r, i) => (
-                <div key={i} className="row" style={{ marginBottom: 8 }}>
+                <div key={i} className="row">
                   <StatusBadge status={`req_${r.status}`} />
                   <span>{r.text}</span>
                   <span className="chip">{r.kind === 'must' ? 'must have' : 'nice to have'}</span>
@@ -307,9 +307,9 @@ export default async function ResumeReview({
         {(d.gaps?.length ?? 0) > 0 && (
           <div id="gaps" className="anchor">
           <Section title="Not in your CV" hint="These never appear in the resume.">
-            <div className="card">
+            <div className="card stack tight">
               {d.gaps!.map((g, i) => (
-                <p key={i} style={{ margin: '0 0 8px' }}>
+                <p key={i}>
                   {g.text} <span className="chip">{g.kind === 'must' ? 'must have' : 'nice to have'}</span>
                   {g.note && <span className="card-meta"> {g.note}</span>}
                 </p>
@@ -322,11 +322,11 @@ export default async function ResumeReview({
         {flagCount > 0 && (
           <div id="flags" className="anchor">
           <Section title="Flags" hint="Check these against your CV before you approve.">
-            <div className="card">
+            <div className="card stack tight">
               {d.fact_flags!.map((f, i) => {
                 const w = flagWhere(f.ref, doc)
                 return (
-                  <p key={i} style={{ margin: '0 0 6px' }}>
+                  <p key={i}>
                     {flagCopy(f.code)}{f.token ? <> <code>{f.token}</code></> : null}{' '}
                     <span className="card-meta">{w.where}</span>
                     {w.text ? <> <q className="card-meta">{w.text}</q></> : null}
@@ -338,16 +338,16 @@ export default async function ResumeReview({
           </div>
         )}
         {master && doc && (
-          <details className="posting-fold" style={{ marginTop: 8 }}>
+          <details className="posting-fold">
             <summary><h2>Left out</h2></summary>
             <p className="sub">Parts of your CV this draft does not use.</p>
-            <div className="card">
+            <div className="card stack tight">
               {(() => {
                 const left = [...src.entries()].filter(([k]) => !cited.has(k))
                 return left.length === 0 ? (
-                  <p className="card-meta" style={{ margin: 0 }}>Everything is used.</p>
+                  <p className="card-meta">Everything is used.</p>
                 ) : (
-                  left.map(([k, t]) => <p key={k} className="card-meta" style={{ margin: '0 0 6px' }}>{t}</p>)
+                  left.map(([k, t]) => <p key={k} className="card-meta">{t}</p>)
                 )
               })()}
             </div>

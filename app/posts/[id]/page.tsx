@@ -1,9 +1,8 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireOwner } from '../../lib/supabase'
 import { captionText, type Post } from '../../lib/queries'
 import { postPrompt } from '../../lib/prompts'
-import { NavBar, StatusBadge, ExternalLink, formatDay, relative } from '../../components/ui'
+import { NavBar, PageHeader, StatusBadge, ExternalLink, formatDay, relative } from '../../components/ui'
 import { ActionButton, CopyButton } from '../../components/ActionButton'
 import { Preview } from '../../components/Preview'
 import { postPreviews } from '../../lib/avatars'
@@ -35,21 +34,20 @@ export default async function PostDetail({ params }: { params: Promise<{ id: str
     <>
       <NavBar current="/posts" waiting={0} />
       <main className="shell">
-        <p className="sub" style={{ marginTop: 20 }}>
-          <Link href="/posts">← Posts</Link>
-        </p>
-
-        <div className="spread">
-          <h1 style={{ marginTop: 8 }}>{p.title || p.id}</h1>
-          <StatusBadge status={p.status} />
-        </div>
-        <p className="sub">
-          {when || 'no date'} · {p.format} · {p.pillar} · {p.id}
-        </p>
+        <PageHeader
+          compact
+          back={{ href: '/posts', label: 'Posts' }}
+          title={p.title || p.id}
+          actions={<StatusBadge status={p.status} />}
+        >
+          <p>
+            {when || 'no date'} · {p.format} · {p.pillar} · {p.id}
+          </p>
+        </PageHeader>
 
         {p.status === 'published' && p.published_url && (
           <div className="card">
-            <p style={{ margin: 0 }}>
+            <p>
               Published {relative(p.published_at)} ·{' '}
               <ExternalLink href={p.published_url}>view on LinkedIn</ExternalLink>
             </p>
@@ -57,7 +55,7 @@ export default async function PostDetail({ params }: { params: Promise<{ id: str
         )}
 
         {p.status === 'failed' && p.last_error && (
-          <div className="notice">
+          <div className="notice fail">
             <strong>Last attempt failed.</strong> <span className="mono">{p.last_error}</span>
           </div>
         )}
@@ -66,7 +64,7 @@ export default async function PostDetail({ params }: { params: Promise<{ id: str
           <>
             <h2>Preview</h2>
             <Preview src={previews.get(id)} alt={p.alt_text ?? undefined} max={520} />
-            <p className="sub" style={{ marginTop: 8 }}>
+            <p className="card-note">
               Tap to open the full image. Publishing re-renders from the current copy.
             </p>
           </>
@@ -86,45 +84,38 @@ export default async function PostDetail({ params }: { params: Promise<{ id: str
           <>
             <h2>Decide</h2>
             <div className="card">
-              <div className="row">
+              <div className="card-actions">
                 {p.status === 'draft' && (
                   <ActionButton
                     primary
                     action={approvePost.bind(null, p.id, isToday)}
                     confirm={isToday ? 'This publishes today, within the hour. Approve it?' : undefined}
                   >
-                    {isToday ? 'Approve — publishes today' : `Approve — publishes ${when}`}
+                    {isToday ? 'Approve for today' : `Approve for ${when}`}
                   </ActionButton>
                 )}
                 <CopyButton text={postPrompt(p)} label="Copy prompt for Claude Code" />
                 <ActionButton action={skipPost.bind(null, p.id)}>Skip</ActionButton>
               </div>
-              <p className="sub" style={{ marginTop: 12, marginBottom: 0 }}>
+              <p className="card-note">
                 Approving schedules the publish job for that morning. Nothing goes out now.
               </p>
             </div>
 
             <h2>Move it</h2>
             <form action={reschedule} className="card">
-              <p className="sub" style={{ marginTop: 0 }}>
+              <p className="sub flush">
                 Changing the date returns it to draft, so it never publishes on a day you did not
                 approve.
               </p>
-              <div className="row">
+              <div className="field-inline card-section">
                 <input
+                  className="input"
                   type="date"
                   name="date"
+                  aria-label="New publish date"
                   defaultValue={p.post_date ?? today}
                   required
-                  style={{
-                    padding: '9px 12px',
-                    borderRadius: 7,
-                    border: '1px solid var(--border-strong)',
-                    background: 'var(--bg)',
-                    color: 'var(--text)',
-                    fontSize: 15,
-                    fontFamily: 'inherit',
-                  }}
                 />
                 <button className="btn" type="submit">
                   Move

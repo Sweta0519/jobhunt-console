@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { requirePrimary, reasonCopy, type FactFlag } from '../lib/resumes'
-import { NavBar, Empty, StatusBadge, formatDay } from '../components/ui'
+import { NavBar, PageHeader, ViewTabs, Empty, StatusBadge, formatDay } from '../components/ui'
 import { ActionButton } from '../components/ActionButton'
 import { Logo } from '../components/Logo'
 import { requeueResume } from '../actions'
@@ -73,26 +73,24 @@ export default async function Resumes({ searchParams }: { searchParams: Promise<
     <>
       <NavBar current="/resumes" waiting={0} />
       <main className="shell">
-        <h1>Resumes</h1>
-        <p className="sub">
-          A tailored resume is drafted for each new role that scores well. Nothing is sent: you read it, edit it and
-          save the PDF yourself.
-        </p>
+        <PageHeader title="Resumes">
+          <p>
+            A tailored resume is drafted for each new role that scores well. Nothing is sent: you read it, edit it and
+            save the PDF yourself.
+          </p>
+        </PageHeader>
 
-        <nav className="row tabs" aria-label="Resume lists">
-          {tabs.map((t) => (
-            <Link
-              key={t.key}
-              className="chip rtab"
-              href={t.key === 'review' ? '/resumes' : `/resumes?view=${t.key}`}
-              aria-current={t.key === view ? 'page' : undefined}
-            >
-              {t.label} {t.count}
-            </Link>
-          ))}
-        </nav>
+        <ViewTabs
+          label="Resume lists"
+          items={tabs.map((t) => ({
+            href: t.key === 'review' ? '/resumes' : `/resumes?view=${t.key}`,
+            label: t.label,
+            count: t.count,
+            active: t.key === view,
+          }))}
+        />
 
-        <section aria-label={tabs.find((t) => t.key === view)!.label} style={{ marginTop: 16 }}>
+        <section aria-label={tabs.find((t) => t.key === view)!.label}>
           {shown.length === 0 ? (
             <Empty>{empty[view]}</Empty>
           ) : (
@@ -118,19 +116,19 @@ export default async function Resumes({ searchParams }: { searchParams: Promise<
                     <span className="score num" aria-label={`Score ${j.score ?? 'none'}`}>{j.score ?? '-'}</span>
                   </div>
                   <div className="card-meta">{j.company}{when ? ` · ${when}` : ''}</div>
-                  <div className="row" style={{ marginTop: 8 }}>
+                  <div className="card-tags">
                     <StatusBadge status={d.status === 'draft' ? 'draft_ready' : d.status} />
                     {open && <span className="chip">{gaps} gap{gaps === 1 ? '' : 's'}</span>}
                     {open && <span className="chip">{flags} flag{flags === 1 ? '' : 's'}</span>}
                     {j.closed && <span className="chip">closed</span>}
                   </div>
                   {view === 'other' && (
-                    <p className="card-meta" style={{ margin: '8px 0 0' }}>
+                    <p className="card-note">
                       {d.status === 'discarded' ? 'You can draft this one again.' : reasonCopy(d.reason)}
                     </p>
                   )}
                   {view === 'other' && (again || ((j.careers_url || j.url) && thin)) && (
-                    <div className="row card-actions" style={{ marginTop: 10 }}>
+                    <div className="card-actions">
                       {(j.careers_url || j.url) && thin && (
                         <a className="btn" href={(j.careers_url || j.url)!} target="_blank" rel="noopener noreferrer">Open posting</a>
                       )}

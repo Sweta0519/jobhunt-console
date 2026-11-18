@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { requireOwner } from '../lib/supabase'
 import { tokenDaysLeft } from '../lib/queries'
-import { NavBar, Section, Empty, relative, formatDay } from '../components/ui'
+import { NavBar, PageHeader, Section, Empty, StatusBadge, List, ListRow, KeyValues, Field, relative, formatDay } from '../components/ui'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Settings' }
@@ -76,17 +76,18 @@ export default async function Settings({
     <>
       <NavBar current="/settings" waiting={0} />
       <main className="shell">
-        <h1>Settings</h1>
-        <p className="sub">Signed in as {user.email}</p>
+        <PageHeader title="Settings">
+          <p>Signed in as {user.email}</p>
+        </PageHeader>
 
         {primary && <Section title="LinkedIn access">
           {sp.linkedin && (
-            <div className={sp.linkedin === 'connected' ? 'card' : 'notice'}>
-              <p style={{ margin: 0 }}>{MESSAGES[sp.linkedin] || 'Something went wrong.'}</p>
+            <div className={sp.linkedin === 'connected' ? 'notice ok' : 'notice fail'}>
+              <p>{MESSAGES[sp.linkedin] || 'Something went wrong.'}</p>
             </div>
           )}
           <div className={days !== null && days <= 7 ? 'notice' : 'card'}>
-            <p style={{ marginTop: 0 }}>
+            <p>
               {days === null
                 ? 'No token is recorded, so posts cannot publish.'
                 : days <= 0
@@ -107,43 +108,30 @@ export default async function Settings({
           {rows.length === 0 ? (
             <Empty>Nothing has run yet.</Empty>
           ) : (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              {rows.map((r, i) => (
-                <div
+            <List>
+              {rows.map((r) => (
+                <ListRow
                   key={r.started_at + r.worker}
-                  style={{
-                    padding: '12px 18px',
-                    borderTop: i === 0 ? 'none' : '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'baseline',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <span style={{ fontWeight: 500, minWidth: 80 }}>{r.worker}</span>
-                  <span
-                    className="badge"
-                    style={{
-                      background: r.ok === false ? 'var(--fail-soft)' : 'var(--done-soft)',
-                      color: r.ok === false ? 'var(--fail)' : 'var(--done)',
-                    }}
-                  >
-                    <span aria-hidden="true">{r.ok === false ? '▲' : '✓'}</span>
-                    {r.ok === false ? 'failed' : 'ok'}
-                  </span>
-                  <span className="card-meta">{relative(r.started_at)}</span>
-                  {r.summary && (
-                    <span className="card-meta mono">
-                      {Object.entries(r.summary)
-                        .filter(([, v]) => typeof v === 'number')
-                        .map(([k, v]) => `${k} ${v}`)
-                        .join(' · ')}
-                    </span>
-                  )}
-                  {r.error && <span className="card-meta mono">{r.error.slice(0, 90)}</span>}
-                </div>
+                  title={r.worker}
+                  trail={<StatusBadge status={r.ok === false ? 'failed' : 'run_ok'} />}
+                  meta={
+                    <>
+                      {relative(r.started_at)}
+                      {r.summary && (
+                        <span className="mono">
+                          {' · '}
+                          {Object.entries(r.summary)
+                            .filter(([, v]) => typeof v === 'number')
+                            .map(([k, v]) => `${k} ${v}`)
+                            .join(' · ')}
+                        </span>
+                      )}
+                      {r.error && <span className="mono">{' · '}{r.error.slice(0, 90)}</span>}
+                    </>
+                  }
+                />
               ))}
-            </div>
+            </List>
           )}
           {lastOk && (
             <p className="sub">
@@ -154,13 +142,7 @@ export default async function Settings({
 
         <Section title="What is stored">
           <div className="card">
-            <ul style={{ margin: 0, paddingLeft: 18 }} className="num">
-              {counts.map(([table, n]) => (
-                <li key={table}>
-                  {n} {table}
-                </li>
-              ))}
-            </ul>
+            <KeyValues items={counts.map(([table, n]) => ({ k: table, v: n }))} />
           </div>
           <p className="sub">
             Company logos are public brand assets. Profile photos sit in a private bucket, only for
@@ -169,8 +151,8 @@ export default async function Settings({
         </Section>
 
         <Section title="What runs where">
-          <div className="card">
-            <p style={{ marginTop: 0 }}>
+          <div className="card prose">
+            <p>
               <strong>In the cloud, daily:</strong> the community question list, and the checks
               behind the notification bell. Neither needs your laptop, and neither uses a paid
               model.
@@ -180,7 +162,7 @@ export default async function Settings({
               checking LinkedIn for replies. LinkedIn&apos;s API exposes neither message threads
               nor comments on your own posts, so those cannot move to a server.
             </p>
-            <p style={{ marginBottom: 0 }}>
+            <p>
               <strong>In Claude Code:</strong> drafting answers, posts and messages. That is
               covered by your existing subscription, which is why this console costs nothing to
               run.
@@ -189,37 +171,25 @@ export default async function Settings({
         </Section>
 
         <Section title="Password" hint="Signing in with a password avoids the built-in mailer, which allows only two sends an hour and does not guarantee delivery.">
-          {sp.password === 'changed' && <div className="notice">Password changed.</div>}
+          {sp.password === 'changed' && <div className="notice ok">Password changed.</div>}
           {sp.password === 'short' && (
-            <div className="notice">Use at least twelve characters.</div>
+            <div className="notice fail">Use at least twelve characters.</div>
           )}
           {sp.password === 'failed' && (
-            <div className="notice">That could not be saved. Try again.</div>
+            <div className="notice fail">That could not be saved. Try again.</div>
           )}
-          <form action={changePassword} className="card">
-            <label htmlFor="new-password" style={{ fontSize: 14, fontWeight: 600 }}>
-              New password
-            </label>
-            <input
-              id="new-password"
-              name="password"
-              type="password"
-              required
-              minLength={12}
-              autoComplete="new-password"
-              style={{
-                width: '100%',
-                marginTop: 6,
-                marginBottom: 12,
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--border-strong)',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: 16,
-                fontFamily: 'inherit',
-              }}
-            />
+          <form action={changePassword} className="card form-stack">
+            <Field label="New password" htmlFor="new-password">
+              <input
+                className="input"
+                id="new-password"
+                name="password"
+                type="password"
+                required
+                minLength={12}
+                autoComplete="new-password"
+              />
+            </Field>
             <button className="btn" type="submit">
               Change password
             </button>
@@ -234,9 +204,9 @@ export default async function Settings({
           </form>
         </Section>
 
-        <p className="sub" style={{ marginTop: 28 }}>
-          <Link href="/">← Today</Link>
-        </p>
+        <Link className="back-link" href="/">
+          ← Today
+        </Link>
       </main>
     </>
   )

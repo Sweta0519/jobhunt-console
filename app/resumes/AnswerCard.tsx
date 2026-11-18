@@ -58,7 +58,7 @@ export function AnswerCard({
       <div className="spread">
         <h3 className="answer-label">
           {label}
-          {required === true && <span className="chip" style={{ marginLeft: 8 }}>required</span>}
+          {required === true && <span className="chip req-chip">required</span>}
         </h3>
         {badge}
       </div>
@@ -74,7 +74,7 @@ export function AnswerCard({
       )}
 
       {(editable || copyText) && (
-        <div className="row" style={{ marginTop: 8 }}>
+        <div className="card-actions">
           {editable && (choice ? (
             <OptionPicker draftId={draftId} qId={qId} label={label} options={options} initial={optionIds} multi={kind === 'multi_select'} onOpen={setOpen} />
           ) : (
@@ -113,15 +113,15 @@ function OptionPicker({
     return <button type="button" className="btn" aria-label={`Edit ${label}`} onClick={() => change(true)}>Edit</button>
   }
   return (
-    <fieldset style={{ border: 0, padding: 0, margin: 0, width: '100%' }}>
+    <fieldset className="choice-group">
       <legend className="card-meta">Choose from the form's choices</legend>
       {options.map((o) => (
-        <label key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 0' }}>
+        <label key={o.id} className="choice">
           <input type={multi ? 'checkbox' : 'radio'} name={`opt-${qId}`} checked={picked.includes(o.id)} onChange={() => toggle(o.id)} />
           <span className="answer-wrap">{o.label}</span>
         </label>
       ))}
-      <div className="row" style={{ marginTop: 8 }}>
+      <div className="card-actions">
         <button
           type="button"
           className="btn primary"

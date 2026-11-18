@@ -19,18 +19,15 @@ export function PasteBox({ formId, mode, title, hint }: { formId: string; mode: 
       <summary><h2>{title}</h2></summary>
       <p className="sub">{hint}</p>
       <textarea
+        className="input"
         value={text}
         aria-label={title}
         maxLength={20000}
         onChange={(e) => { setText(e.target.value); setSent(false) }}
         rows={8}
         placeholder={'One question per line.\nPut choices on the lines below it, each starting with "- ".\nEnd a line with * if it is required.'}
-        style={{
-          width: '100%', padding: 12, borderRadius: 8, border: '1px solid var(--border-strong)',
-          background: 'var(--bg)', color: 'var(--text)', fontSize: 15, fontFamily: 'inherit', lineHeight: 1.5,
-        }}
       />
-      <div className="row" style={{ marginTop: 8 }}>
+      <div className="card-actions">
         <button
           type="button"
           className="btn primary"

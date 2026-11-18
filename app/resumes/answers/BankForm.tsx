@@ -28,7 +28,7 @@ export function BankForm({ fields, sections, suggest }: { fields: Field[]; secti
   return (
     <div>
       {Object.keys(suggest).length > 0 && (
-        <div className="row" style={{ marginBottom: 12 }}>
+        <div className="toolbar">
           <button type="button" className="btn" onClick={fill}>Fill from my CV</button>
           <span className="card-meta">Fills empty fields on this page only. Nothing is saved until you press Save.</span>
         </div>
@@ -40,10 +40,10 @@ export function BankForm({ fields, sections, suggest }: { fields: Field[]; secti
             const id = `bank-${f.key}`
             const dirty = (values[f.key] ?? '') !== (saved[f.key] ?? '')
             return (
-              <div key={f.key} className="card" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label htmlFor={id} style={{ flex: '1 1 200px', fontWeight: 600 }}>{f.label}</label>
+              <div key={f.key} className="card bank-row">
+                <label htmlFor={id}>{f.label}</label>
                 {f.type === 'yesno' ? (
-                  <select id={id} value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} style={inputStyle}>
+                  <select id={id} value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} className="input">
                     <option value="">Not set</option>
                     <option value="yes">Yes</option>
                     <option value="no">No</option>
@@ -57,7 +57,7 @@ export function BankForm({ fields, sections, suggest }: { fields: Field[]; secti
                     autoComplete="off"
                     value={values[f.key] ?? ''}
                     onChange={(e) => set(f.key, e.target.value)}
-                    style={{ ...inputStyle, flex: '2 1 260px' }}
+                    className="input"
                   />
                 )}
                 <ActionButton action={() => saveBankValue(f.key, values[f.key] ?? '')} disabled={!dirty}>
@@ -70,14 +70,4 @@ export function BankForm({ fields, sections, suggest }: { fields: Field[]; secti
       ))}
     </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: '9px 12px',
-  borderRadius: 8,
-  border: '1px solid var(--border-strong)',
-  background: 'var(--surface)',
-  color: 'var(--text)',
-  fontSize: 16,
-  fontFamily: 'inherit',
 }

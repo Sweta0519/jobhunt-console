@@ -1,20 +1,8 @@
 import { redirect } from 'next/navigation'
 import { getSupabase } from '../lib/supabase'
+import { BrandMark, Field } from '../components/ui'
 
 export const metadata = { title: 'Sign in' }
-
-const FIELD: React.CSSProperties = {
-  width: '100%',
-  marginTop: 6,
-  marginBottom: 12,
-  padding: '10px 12px',
-  borderRadius: 8,
-  border: '1px solid var(--border-strong)',
-  background: 'var(--bg)',
-  color: 'var(--text)',
-  fontSize: 16,
-  fontFamily: 'inherit',
-}
 
 async function signIn(formData: FormData) {
   'use server'
@@ -65,79 +53,80 @@ export default async function Login({
 }) {
   const sp = await searchParams
   return (
-    <main className="shell" style={{ maxWidth: 400, paddingTop: 80 }}>
-      <h1>Jobhunt Console</h1>
+    <main className="shell auth">
+      <div className="auth-brand">
+        <BrandMark />
+        <span>Jobhunt Console</span>
+      </div>
+      <h1>Sign in</h1>
       <p className="sub">Sign in with your email and password.</p>
 
-      {sp.bad && <div className="notice">That email and password do not match.</div>}
+      {sp.bad && <div className="notice fail">That email and password do not match.</div>}
       {sp.sent && (
-        <div className="notice">
+        <div className="notice info">
           Link sent. It can take a minute or two to arrive, and checking spam is
           worth it. Sending again inside sixty seconds will be refused, so give it
           that long before trying.
         </div>
       )}
       {sp.wait && (
-        <div className="notice">
+        <div className="notice info">
           A link was already sent to that address. Wait a minute before asking for
           another one, then check spam. Only two can be sent an hour.
         </div>
       )}
       {sp.error && (
-        <div className="notice">
+        <div className="notice fail">
           That did not work. Check the address is the one this console belongs to.
         </div>
       )}
       {sp.denied && (
-        <div className="notice">
+        <div className="notice fail">
           That account is signed in but is not the owner of this console.
         </div>
       )}
 
-      <form action={signIn} className="card" style={{ marginTop: 16 }}>
-        <label htmlFor="email" style={{ fontSize: 14, fontWeight: 600 }}>
-          Email
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          autoComplete="username"
-          style={FIELD}
-        />
-        <label htmlFor="password" style={{ fontSize: 14, fontWeight: 600 }}>
-          Password
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          autoComplete="current-password"
-          style={FIELD}
-        />
-        <button type="submit" className="btn primary" style={{ width: '100%' }}>
+      <form action={signIn} className="card form-stack">
+        <Field label="Email" htmlFor="email">
+          <input
+            className="input"
+            id="email"
+            name="email"
+            type="email"
+            required
+            autoComplete="username"
+          />
+        </Field>
+        <Field label="Password" htmlFor="password">
+          <input
+            className="input"
+            id="password"
+            name="password"
+            type="password"
+            required
+            autoComplete="current-password"
+          />
+        </Field>
+        <button type="submit" className="btn primary">
           Sign in
         </button>
       </form>
 
       {/* Kept as the way back in if the password is lost, not as the usual door:
           the built-in mailer is best effort and allows two sends an hour. */}
-      <form action={sendLink} style={{ marginTop: 18 }}>
-        <label htmlFor="link-email" className="sub" style={{ fontSize: 13 }}>
-          Forgotten it? Email a one-time sign-in link instead.
-        </label>
-        <input
-          id="link-email"
-          name="email"
-          type="email"
-          required
-          autoComplete="username"
-          placeholder="you@example.com"
-          style={FIELD}
-        />
-        <button type="submit" className="btn" style={{ width: '100%' }}>
+      <form action={sendLink} className="auth-alt form-stack">
+        <Field label="Forgotten it? Email a one-time sign-in link instead." htmlFor="link-email">
+          <input
+            className="input"
+            id="link-email"
+            name="email"
+            type="email"
+            required
+            autoComplete="username"
+            placeholder="you@example.com"
+          />
+        </Field>
+        <button type="submit" className="btn">
           Email me a link
         </button>
       </form>

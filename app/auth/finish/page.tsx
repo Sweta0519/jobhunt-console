@@ -34,7 +34,7 @@ export default function Finish() {
   }, [])
 
   return (
-    <main className="shell" style={{ maxWidth: 400, paddingTop: 80 }}>
+    <main className="shell auth">
       <p className="sub">{message}</p>
       <noscript>This page needs JavaScript to finish signing you in.</noscript>
     </main>

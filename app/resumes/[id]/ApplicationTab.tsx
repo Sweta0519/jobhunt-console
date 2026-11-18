@@ -74,7 +74,7 @@ export async function ApplicationTab({
         </nav>
       )}
 
-      <div className="row" style={{ marginBottom: 12 }}>
+      <div className="toolbar">
         {draft && working && <StatusBadge status={draft.status} />}
         {draft && draft.status === 'failed' && <StatusBadge status="failed" />}
         {form && formRead && form.completeness === 'may_be_incomplete' && <StatusBadge status="form_partial" />}
@@ -88,7 +88,7 @@ export async function ApplicationTab({
       {formRead && form!.completeness === 'may_be_incomplete' && (
         <div className="notice">
           The reader may not have seen the whole form. Compare it with the real page before you rely on it.
-          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+          <ul className="card-list">
             {(form!.form!.partial_reasons ?? []).map((c) => <li key={c}>{partialCopy(c)}</li>)}
           </ul>
         </div>
@@ -117,7 +117,7 @@ export async function ApplicationTab({
 
       {!formRead && form && (
         <div className="card">
-          <p style={{ margin: 0 }}>
+          <p>
             {form.status === 'queued' ? 'The form is waiting to be read.' : formReasonCopy(form.reason)}
           </p>
         </div>
@@ -163,7 +163,7 @@ export async function ApplicationTab({
             ) : (
               <div key={q.id} className="card">
                 <b className="answer-wrap">{q.label}</b>
-                {q.required === true && <span className="chip" style={{ marginLeft: 8 }}>required</span>}
+                {q.required === true && <span className="chip req-chip">required</span>}
               </div>
             )
           })}
@@ -191,9 +191,9 @@ export async function ApplicationTab({
                 <div className="answer-text">{draft.cover_text}</div>
               )}
               {(draft.fact_flags ?? []).filter((x) => String(x.ref).startsWith('cover.')).map((x, i) => (
-                <p key={i} className="card-meta" style={{ margin: '6px 0 0' }}>{answerFlagCopy(x.code)}</p>
+                <p key={i} className="card-meta card-note">{answerFlagCopy(x.code)}</p>
               ))}
-              <div className="row" style={{ marginTop: 8 }}>
+              <div className="card-actions">
                 <CopyButton text={draft.cover_text} />
                 <a className="btn" href={`/resumes/${resumeId}/cover?auto=1`} target="_blank" rel="noopener">Download PDF</a>
                 {draft.status === 'draft' && <ActionButton action={requestCoverLetter.bind(null, draft.id)}>Draft again</ActionButton>}
@@ -201,11 +201,11 @@ export async function ApplicationTab({
             </div>
           ) : (
             <div className="card">
-              {draft.cover_reason && <p className="sub" style={{ marginTop: 0 }}>{whyCopy(draft.cover_reason === 'facts_failed' ? 'facts_failed' : 'cover_failed')}</p>}
+              {draft.cover_reason && <p className="sub">{whyCopy(draft.cover_reason === 'facts_failed' ? 'facts_failed' : 'cover_failed')}</p>}
               {['draft', 'skipped', 'failed'].includes(draft.status) ? (
                 <ActionButton action={requestCoverLetter.bind(null, draft.id)}>Draft a cover letter</ActionButton>
               ) : (
-                <p className="sub" style={{ margin: 0 }}>Waiting for the next run.</p>
+                <p className="sub flush">Waiting for the next run.</p>
               )}
             </div>
           )}
@@ -213,7 +213,7 @@ export async function ApplicationTab({
       )}
 
       {draft && draft.status === 'draft' && answered && formRead && (
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="card-actions">
           <ActionButton action={redraftAnswers.bind(null, draft.id)} confirm={hasEdits ? 'This replaces your edits.' : undefined}>
             Draft all answers again
           </ActionButton>

@@ -1,7 +1,7 @@
 import { requireOwner } from '../lib/supabase'
 import { captionText, type Post } from '../lib/queries'
 import { postPrompt } from '../lib/prompts'
-import { NavBar, Section, Empty, StatusBadge, ExternalLink, formatDay } from '../components/ui'
+import { NavBar, PageHeader, Section, Empty, StatusBadge, ExternalLink, List, ListRow, formatDay } from '../components/ui'
 import { ActionButton, CopyButton } from '../components/ActionButton'
 import { Preview } from '../components/Preview'
 import { postPreviews } from '../lib/avatars'
@@ -27,11 +27,12 @@ export default async function Posts() {
     <>
       <NavBar current="/posts" waiting={0} />
       <main className="shell">
-        <h1>Posts</h1>
-        <p className="sub">
-          Approved posts publish on their date through LinkedIn&apos;s official API, with your
-          laptop closed.
-        </p>
+        <PageHeader title="Posts" count={upcoming.length}>
+          <p>
+            Approved posts publish on their date through LinkedIn&apos;s official API, with your
+            laptop closed.
+          </p>
+        </PageHeader>
 
         <Section title="Coming up">
           {upcoming.length === 0 ? (
@@ -41,7 +42,7 @@ export default async function Posts() {
           )}
         </Section>
 
-        <Section title={`Published (${published.length})`}>
+        <Section title="Published" count={published.length}>
           {published.length === 0 ? (
             <Empty>Nothing published yet.</Empty>
           ) : (
@@ -56,9 +57,9 @@ export default async function Posts() {
                 </div>
                 <Preview src={previews.get(p.id)} alt={p.alt_text ?? undefined} max={200} />
                 {p.published_url && (
-                  <div className="row" style={{ marginTop: 12 }}>
-                    <ExternalLink href={p.published_url}>
-                      <span className="btn">View on LinkedIn</span>
+                  <div className="card-actions">
+                    <ExternalLink className="btn" href={p.published_url}>
+                      View on LinkedIn
                     </ExternalLink>
                   </div>
                 )}
@@ -69,15 +70,16 @@ export default async function Posts() {
 
         {other.length > 0 && (
           <Section title="Past and skipped">
-            {other.map((p) => (
-              <article key={p.id} className="card">
-                <div className="spread">
-                  <h3 className="card-title">{p.title || p.id}</h3>
-                  <StatusBadge status={p.status} />
-                </div>
-                <div className="card-meta">{formatDay(p.post_date)}</div>
-              </article>
-            ))}
+            <List>
+              {other.map((p) => (
+                <ListRow
+                  key={p.id}
+                  title={p.title || p.id}
+                  meta={formatDay(p.post_date)}
+                  trail={<StatusBadge status={p.status} />}
+                />
+              ))}
+            </List>
           </Section>
         )}
       </main>
@@ -99,14 +101,14 @@ function Card({ p, today, preview }: { p: Post; today: string; preview?: string 
       </div>
       <Preview src={preview} alt={p.alt_text ?? undefined} />
       {p.caption && <div className="card-body">{captionText(p.caption)}</div>}
-      <div className="row" style={{ marginTop: 12 }}>
+      <div className="card-actions">
         {p.status === 'draft' && (
           <ActionButton
             primary
             action={approvePost.bind(null, p.id, isToday)}
             confirm={isToday ? 'This publishes today, within the hour. Approve it?' : undefined}
           >
-            {isToday ? 'Approve — publishes today' : `Approve — publishes ${when}`}
+            {isToday ? 'Approve for today' : `Approve for ${when}`}
           </ActionButton>
         )}
         <CopyButton text={postPrompt(p)} label="Copy prompt" />

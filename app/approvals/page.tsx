@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { requireOwner } from '../lib/supabase'
 import { captionText, type Outreach, type Post } from '../lib/queries'
-import { NavBar, Section, Empty, StatusBadge, formatDay, relative } from '../components/ui'
+import { NavBar, PageHeader, Section, Empty, StatusBadge, formatDay, relative } from '../components/ui'
 import { ActionButton, CopyButton } from '../components/ActionButton'
 import { Logo } from '../components/Logo'
 import { Expandable, InlineEdit } from '../components/Interactive'
@@ -47,15 +47,17 @@ export default async function Approvals() {
     <>
       <NavBar current="/approvals" waiting={total} />
       <main className="shell">
-        <h1>Approvals</h1>
-        <p className="sub">
-          {total === 0
-            ? 'Nothing waiting.'
-            : `${total} item${total === 1 ? '' : 's'} waiting on your word.`}
-        </p>
+        <PageHeader title="Approvals" count={total}>
+          <p>
+            {total === 0
+              ? 'Nothing waiting.'
+              : `${total} item${total === 1 ? '' : 's'} waiting on your word.`}
+          </p>
+        </PageHeader>
 
         <Section
           title="Posts"
+          count={posts.length}
           hint="Approving a post schedules it. The publish job runs that morning whether or not your laptop is on."
         >
           {posts.length === 0 ? (
@@ -75,7 +77,7 @@ export default async function Approvals() {
                   </div>
                   <Preview src={previews.get(p.id)} alt={p.alt_text ?? undefined} />
                   {p.caption && <Expandable text={captionText(p.caption)} />}
-                  <div className="row" style={{ marginTop: 12 }}>
+                  <div className="card-actions">
                     {p.status === 'draft' && (
                       <ActionButton
                         primary
@@ -86,7 +88,7 @@ export default async function Approvals() {
                             : undefined
                         }
                       >
-                        {isToday ? `Approve — publishes today` : `Approve — publishes ${when}`}
+                        {isToday ? 'Approve for today' : `Approve for ${when}`}
                       </ActionButton>
                     )}
                     <Link className="btn" href={`/posts/${p.id}`}>
@@ -102,7 +104,8 @@ export default async function Approvals() {
 
         {scheduled.length > 0 && (
           <Section
-            title={`Scheduled (${scheduled.length})`}
+            title="Scheduled"
+            count={scheduled.length}
             hint="Already approved. These publish on their morning without you; they are here only so you can still pull one back."
           >
             {scheduled.map((p) => (
@@ -114,7 +117,7 @@ export default async function Approvals() {
                 <div className="card-meta">
                   {formatDay(p.post_date)} · {p.format} · {p.pillar}
                 </div>
-                <div className="row" style={{ marginTop: 12 }}>
+                <div className="card-actions">
                   <Link className="btn" href={`/posts/${p.id}`}>
                     Details
                   </Link>
@@ -132,6 +135,7 @@ export default async function Approvals() {
 
         <Section
           title="Outreach"
+          count={outreach.length}
           hint="The console never sends a LinkedIn message. Copy the text, send it yourself, then mark it sent."
         >
           {outreach.length === 0 ? (
@@ -140,7 +144,7 @@ export default async function Approvals() {
             outreach.map((o) => (
               <article key={o.id} className="card">
                 <div className="spread">
-                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <h3 className="card-title title-lead">
                     <Logo name={o.company} slug={o.company_slug} path={logos.get(o.company_slug ?? '')} size={24} />
                     {o.person_name}
                   </h3>
@@ -151,18 +155,18 @@ export default async function Approvals() {
                   {relative(o.created_at)}
                 </div>
                 {o.reason && (
-                  <p className="sub" style={{ marginTop: 8 }}>
-                    {o.reason}
-                  </p>
+                  <p className="card-note">{o.reason}</p>
                 )}
                 {o.body && <Expandable text={o.body} />}
                 {o.channel === 'connect_note' && o.body && (
                   <div className="card-meta num">
                     {o.body.length} / 200 characters
-                    {o.body.length > 200 ? ' — too long for a connection note' : ''}
+                    {o.body.length > 200 && (
+                      <span className="is-over"> (too long for a connection note)</span>
+                    )}
                   </div>
                 )}
-                <div className="row" style={{ marginTop: 12 }}>
+                <div className="card-actions">
                   {o.status === 'draft' && (
                     <ActionButton primary action={approveOutreach.bind(null, o.id)}>
                       Approve
@@ -187,7 +191,7 @@ export default async function Approvals() {
                   </ActionButton>
                   <ActionButton action={skipOutreach.bind(null, o.id)}>Skip</ActionButton>
                 </div>
-                <div className="row" style={{ marginTop: 10 }}>
+                <div className="card-section">
                   <InlineEdit
                     initial={o.body ?? ''}
                     limit={o.channel === 'connect_note' ? 200 : undefined}

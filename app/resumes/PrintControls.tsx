@@ -16,11 +16,11 @@ export function PrintControls() {
   }, [])
 
   return (
-    <div className="no-print" style={{ maxWidth: '210mm', margin: '0 auto 12px', padding: '0 12px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+    <div className="no-print print-controls">
       <button type="button" className="btn primary" onClick={() => window.print()}>
         Print or save as PDF
       </button>
-      {over && <span className="notice" style={{ margin: 0 }}>{ONE_PAGE_WARNING}</span>}
+      {over && <span className="notice">{ONE_PAGE_WARNING}</span>}
     </div>
   )
 }

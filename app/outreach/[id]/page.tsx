@@ -1,10 +1,9 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireOwner } from '../../lib/supabase'
 import { peopleAvatars } from '../../lib/avatars'
 import type { Outreach } from '../../lib/queries'
 import { outreachPrompt, linkedinChatUrl } from '../../lib/prompts'
-import { NavBar, StatusBadge, formatDay, relative } from '../../components/ui'
+import { NavBar, PageHeader, StatusBadge, KeyValues, formatDay, relative } from '../../components/ui'
 import { ActionButton, CopyButton } from '../../components/ActionButton'
 import { Logo } from '../../components/Logo'
 import { InlineEdit } from '../../components/Interactive'
@@ -44,12 +43,9 @@ export default async function OutreachDetail({ params }: { params: Promise<{ id:
     <>
       <NavBar current="/outreach" waiting={0} />
       <main className="shell">
-        <p className="sub" style={{ marginTop: 20 }}>
-          <Link href="/outreach">← Outreach</Link>
-        </p>
-
-        <div className="spread">
-          <h1 style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <PageHeader
+          back={{ href: '/outreach', label: 'Outreach' }}
+          lead={
             <Logo
               name={o.person_name}
               slug={o.person_id ?? o.person_name}
@@ -57,42 +53,57 @@ export default async function OutreachDetail({ params }: { params: Promise<{ id:
               size={36}
               round
             />
-            {o.person_name}
-          </h1>
-          <StatusBadge status={o.status} />
-        </div>
-        <p className="sub">
-          {o.company} · {o.channel.replace('_', ' ')} · {o.kind}
-          {person?.headline ? ` · ${person.headline}` : ''}
-        </p>
+          }
+          title={o.person_name}
+          actions={<StatusBadge status={o.status} />}
+        >
+          <p>
+            {o.company} · {o.channel.replace('_', ' ')} · {o.kind}
+            {person?.headline ? ` · ${person.headline}` : ''}
+          </p>
+        </PageHeader>
 
         {o.reason && (
           <div className="card">
-            <p style={{ margin: 0 }}>{o.reason}</p>
+            <p>{o.reason}</p>
           </div>
         )}
 
         <h2>Timeline</h2>
         <div className="card">
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            <li>Drafted {relative(o.created_at)}</li>
-            {o.approved_at && <li>Approved {relative(o.approved_at)}</li>}
-            {o.sent_at && <li>Sent {relative(o.sent_at)}</li>}
-            {o.replied_at && <li>Replied {relative(o.replied_at)}</li>}
-            {o.followup_due_at && !o.replied_at && (
-              <li>
-                Follow-up due {formatDay(o.followup_due_at)}
-                {o.followup_due_at < new Date().toISOString() ? ' — overdue' : ''}
-              </li>
-            )}
-          </ul>
+          <KeyValues
+            items={[
+              { k: 'Drafted', v: relative(o.created_at) },
+              ...(o.approved_at ? [{ k: 'Approved', v: relative(o.approved_at) }] : []),
+              ...(o.sent_at ? [{ k: 'Sent', v: relative(o.sent_at) }] : []),
+              ...(o.replied_at ? [{ k: 'Replied', v: relative(o.replied_at) }] : []),
+              ...(o.followup_due_at && !o.replied_at
+                ? [
+                    {
+                      k: 'Follow-up due',
+                      v: (
+                        <>
+                          {formatDay(o.followup_due_at)}
+                          {o.followup_due_at < new Date().toISOString() && (
+                            <>
+                              {' '}
+                              <StatusBadge status="overdue" />
+                            </>
+                          )}
+                        </>
+                      ),
+                    },
+                  ]
+                : []),
+            ]}
+          />
         </div>
 
         {job && (
           <>
             <h2>The role</h2>
             <div className="card">
-              <p className="card-title" style={{ marginBottom: 2 }}>
+              <p className="card-title">
                 {job.careers_url || job.url ? (
                   <a href={job.careers_url || job.url!} target="_blank" rel="noopener noreferrer">
                     {job.title}
@@ -101,7 +112,7 @@ export default async function OutreachDetail({ params }: { params: Promise<{ id:
                   job.title
                 )}
               </p>
-              <p className="card-meta" style={{ margin: 0 }}>
+              <p className="card-meta">
                 {job.location} {job.score != null ? `· score ${job.score}` : ''}
               </p>
             </div>
@@ -113,12 +124,14 @@ export default async function OutreachDetail({ params }: { params: Promise<{ id:
         {limit && o.body && (
           <p className="card-meta num">
             {o.body.length} / {limit} characters
-            {o.body.length > limit ? ' — too long for a connection note' : ''}
+            {o.body.length > limit && (
+              <span className="is-over"> (too long for a connection note)</span>
+            )}
           </p>
         )}
 
-        <div className="card" style={{ marginTop: 12 }}>
-          <div className="row">
+        <div className="card card-section">
+          <div className="card-actions">
             {o.status === 'draft' && (
               <ActionButton primary action={approveOutreach.bind(null, o.id)}>
                 Approve
@@ -152,7 +165,7 @@ export default async function OutreachDetail({ params }: { params: Promise<{ id:
               <ActionButton action={skipOutreach.bind(null, o.id)}>Skip</ActionButton>
             )}
           </div>
-          <p className="sub" style={{ marginTop: 12, marginBottom: 0 }}>
+          <p className="card-note">
             The console never sends. Copy the text, send it from LinkedIn, then mark it sent.
           </p>
         </div>
@@ -169,7 +182,7 @@ export default async function OutreachDetail({ params }: { params: Promise<{ id:
                   return editOutreach(o.id, text)
                 }}
               />
-              <p className="sub" style={{ marginTop: 10, marginBottom: 0 }}>
+              <p className="card-note">
                 Saving returns it to draft, so approval always applies to the words you read.
               </p>
             </div>

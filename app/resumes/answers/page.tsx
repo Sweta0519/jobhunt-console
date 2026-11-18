@@ -1,6 +1,5 @@
-import Link from 'next/link'
 import { requirePrimary, type MasterDoc } from '../../lib/resumes'
-import { NavBar } from '../../components/ui'
+import { NavBar, PageHeader } from '../../components/ui'
 import { BankForm } from './BankForm'
 import { BANK, BANK_SECTIONS } from '../../../workers/lib/apply/bank.mjs'
 
@@ -47,13 +46,13 @@ export default async function SavedAnswers() {
     <>
       <NavBar current="/resumes" waiting={0} />
       <main className="shell">
-        <Link href="/resumes" className="resume-back">← Resumes</Link>
-        <h1 style={{ marginTop: 8 }}>Saved answers</h1>
-        <p className="sub">
-          Facts that stay the same from one application to the next. They are stored as plain text and only you can read them:
-          the drafting worker has no access to this table and is never sent these values. A field you leave empty is never filled in for you.
-        </p>
-        <p className="sub">Pay is one free text value. A range with a currency is fine, and you can change it for a single job on its Application tab.</p>
+        <PageHeader title="Saved answers" back={{ href: '/resumes', label: 'Resumes' }}>
+          <p>
+            Facts that stay the same from one application to the next. They are stored as plain text and only you can read them:
+            the drafting worker has no access to this table and is never sent these values. A field you leave empty is never filled in for you.
+          </p>
+          <p>Pay is one free text value. A range with a currency is fine, and you can change it for a single job on its Application tab.</p>
+        </PageHeader>
         <BankForm fields={fields} sections={BANK_SECTIONS} suggest={suggestions((latest?.doc as MasterDoc | undefined) ?? null)} />
       </main>
     </>
