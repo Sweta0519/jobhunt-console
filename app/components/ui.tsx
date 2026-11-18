@@ -70,6 +70,13 @@ export function StatusBadge({ status }: { status: string }) {
     board_stopped: { tone: 'inert', glyph: '·', label: 'Not watching' },
     board_unsupported: { tone: 'inert', glyph: '·', label: 'Check by hand' },
     saved: { tone: 'inert', glyph: '☆', label: 'Saved' },
+
+    // merged work on record, and run results on settings
+    pr_merged: { tone: 'done', glyph: '✓', label: 'Merged' },
+    pr_open: { tone: 'inert', glyph: '·', label: 'Open' },
+    pr_closed: { tone: 'inert', glyph: '–', label: 'Closed' },
+    overdue: { tone: 'fail', glyph: '▲', label: 'Overdue' },
+    run_ok: { tone: 'done', glyph: '✓', label: 'OK' },
   }
   const s = map[status] ?? { tone: 'inert', glyph: '·', label: status }
   return (
@@ -84,16 +91,21 @@ export function Section({
   title,
   hint,
   id,
+  count,
   children,
 }: {
   title: string
   hint?: string
   id?: string
+  count?: number
   children: React.ReactNode
 }) {
   return (
     <section id={id}>
-      <h2>{title}</h2>
+      <h2>
+        {title}
+        {count != null && <span className="h-count num">{count}</span>}
+      </h2>
       {hint && <p className="sub">{hint}</p>}
       {children}
     </section>
@@ -128,9 +140,17 @@ export function relative(value?: string | null) {
   return formatDay(value)
 }
 
-export function ExternalLink({ href, children }: { href: string; children: React.ReactNode }) {
+export function ExternalLink({
+  href,
+  className,
+  children,
+}: {
+  href: string
+  className?: string
+  children: React.ReactNode
+}) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer">
+    <a href={href} className={className} target="_blank" rel="noopener noreferrer">
       {children}
     </a>
   )
@@ -147,15 +167,106 @@ export function Stat({
   label: string
   value: ReactNode
   hint?: string | null
-  href: string
+  href?: string
   tone?: 'wait'
 }) {
-  return (
-    <Link href={href} className={`stat${tone ? ` ${tone}` : ''}`}>
+  const inner = (
+    <>
       <span className="stat-label">{label}</span>
       <span className="stat-value num">{value}</span>
       {hint && <span className="stat-hint">{hint}</span>}
+    </>
+  )
+  if (!href) return <div className={`stat static${tone ? ` ${tone}` : ''}`}>{inner}</div>
+  return (
+    <Link href={href} className={`stat${tone ? ` ${tone}` : ''}`}>
+      {inner}
     </Link>
+  )
+}
+
+/* ---- page layout primitives ---- */
+
+export { Field } from './Field'
+
+export function PageHeader({ title, count, back, lead, actions, compact, children }: {
+  title: ReactNode; count?: number; back?: { href: string; label: string }
+  lead?: ReactNode; actions?: ReactNode; compact?: boolean; children?: ReactNode
+}) {
+  return (
+    <header className={`page-head${compact ? ' compact' : ''}`}>
+      {back && <Link href={back.href} className="back-link">← {back.label}</Link>}
+      <div className="page-head-row">
+        <h1 className="page-title">
+          {lead}
+          <span className="page-title-text">{title}</span>
+          {count != null && <span className="page-count num">{count}</span>}
+        </h1>
+        {actions && <div className="page-actions">{actions}</div>}
+      </div>
+      {children && <div className="page-desc">{children}</div>}
+    </header>
+  )
+}
+
+export function ViewTabs({ label, items }: {
+  label: string; items: { href: string; label: string; count?: number; active: boolean }[]
+}) {
+  return (
+    <nav className="vtabs" aria-label={label}>
+      {items.map((i) => (
+        <Link key={i.href} href={i.href} className="vtab" aria-current={i.active ? 'page' : undefined}>
+          {i.label}{i.count != null && <span className="vtab-count num">{i.count}</span>}
+        </Link>
+      ))}
+    </nav>
+  )
+}
+
+export function Toolbar({ label, children, meta, scroll }: {
+  label: string; children: ReactNode; meta?: ReactNode; scroll?: boolean
+}) {
+  return (
+    <div className="toolbar">
+      <div className={`toolbar-items${scroll ? ' scroll' : ''}`} role="group" aria-label={label}>{children}</div>
+      {meta && <div className="toolbar-meta">{meta}</div>}
+    </div>
+  )
+}
+
+export function ChipLink({ href, active, count, children }: {
+  href: string; active?: boolean; count?: number; children: ReactNode
+}) {
+  return (
+    <Link href={href} className="chip" aria-current={active ? 'page' : undefined}>
+      {children}{count != null && <span className="chip-count num">{count}</span>}
+    </Link>
+  )
+}
+
+export function List({ children, label }: { children: ReactNode; label?: string }) {
+  return <ul className="list-group" aria-label={label}>{children}</ul>
+}
+export function ListRow({ lead, title, meta, trail, muted }: {
+  lead?: ReactNode; title: ReactNode; meta?: ReactNode; trail?: ReactNode; muted?: boolean
+}) {
+  return (
+    <li className={`li-row${muted ? ' is-muted' : ''}`}>
+      {lead && <span className="li-lead">{lead}</span>}
+      <div className="li-main">
+        <div className="li-title">{title}</div>
+        {meta && <div className="li-meta">{meta}</div>}
+      </div>
+      {trail && <div className="li-trail">{trail}</div>}
+    </li>
+  )
+}
+
+export function KeyValues({ items }: { items: { k: ReactNode; v: ReactNode }[] }) {
+  return (
+    <dl className="kv">
+      {items.map((i, n) => <div key={n} className="kv-row"><dt>{i.k}</dt><dd>{i.v}</dd></div>)}
+    </dl>
   )
 }
 
@@ -224,7 +335,7 @@ export const ICONS: Record<string, ReactNode> = Object.fromEntries(
   Object.keys(ICON_PATHS).map((k) => [k, <Icon key={k} name={k} />])
 )
 
-function BrandMark() {
+export function BrandMark() {
   return (
     <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true">
       <path d="M23 15v-4.5a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4V15" fill="none" stroke="#1f6c9f" strokeWidth="4.5" />

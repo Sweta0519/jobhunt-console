@@ -1,6 +1,19 @@
-import Link from 'next/link'
 import { requireOwner } from '../lib/supabase'
-import { NavBar, Section, Empty, ExternalLink, formatDay } from '../components/ui'
+import {
+  NavBar,
+  PageHeader,
+  Section,
+  Toolbar,
+  ChipLink,
+  Stat,
+  List,
+  ListRow,
+  Field,
+  Empty,
+  StatusBadge,
+  ExternalLink,
+  formatDay,
+} from '../components/ui'
 import { CopyButton } from '../components/ActionButton'
 import { addContribution } from '../actions'
 
@@ -106,103 +119,114 @@ export default async function Record({
     <>
       <NavBar current="/record" waiting={0} />
       <main className="shell">
-        <h1>Record</h1>
-        <p className="sub">
-          Public work with a link behind it. This is what you show when you apply.
-        </p>
+        <PageHeader title="Record" count={rows.length}>
+          <p>Public work with a link behind it. This is what you show when you apply.</p>
+        </PageHeader>
 
         <Section title="Momentum" hint="Only public artifacts and replies from real people are counted. No followers, no impressions.">
           <div className="card">
-            <div className="row" style={{ alignItems: 'flex-end', gap: 6, height: 70 }}>
+            <div className="spark" role="img" aria-label="Public contributions per week, last 12 weeks">
               {weeks.map((w) => (
-                <div key={w.label} style={{ flex: 1, textAlign: 'center' }} title={`${w.label}: ${w.n}`}>
+                <div key={w.label} className="spark-col" title={`${w.label}: ${w.n}`}>
                   <div
-                    style={{
-                      height: `${Math.round((w.n / max) * 52)}px`,
-                      minHeight: w.n > 0 ? 3 : 1,
-                      background: w.n > 0 ? 'var(--accent)' : 'var(--border)',
-                      borderRadius: 3,
-                    }}
+                    className={`spark-bar${w.n > 0 ? ' on' : ''}`}
+                    style={{ '--h': `${Math.round((w.n / max) * 52)}px` } as React.CSSProperties}
                   />
-                  <div style={{ fontSize: 10, color: 'var(--faint)', marginTop: 4 }}>{w.label}</div>
+                  <div className="spark-label">{w.label}</div>
                 </div>
               ))}
             </div>
-            <p className="sub" style={{ marginTop: 12, marginBottom: 0 }}>
+            <p className="card-note">
               {activeWeeks} of the last 12 weeks had at least one public contribution.
             </p>
           </div>
         </Section>
 
         <Section title="Applications since 25 April" hint="Absolute numbers, from the inbox and from what you recorded. A rate at this sample size would be noise.">
-          <div className="card num">
-            {appFunnel.applied} applied → {appFunnel.interviewed} interviewed → {appFunnel.rejected} rejected · {appFunnel.waiting} still waiting
+          <div className="stats compact">
+            <Stat label="Applied" value={appFunnel.applied} />
+            <Stat label="Interviewed" value={appFunnel.interviewed} />
+            <Stat label="Rejected" value={appFunnel.rejected} />
+            <Stat label="Still waiting" value={appFunnel.waiting} />
           </div>
         </Section>
 
         <Section title="Outreach" hint="Absolute numbers. A rate at this sample size would be noise.">
-          <div className="card num">
-            {drafted} drafted → {sent} sent → {accepted} accepted → {replied} replied
+          <div className="stats compact">
+            <Stat label="Drafted" value={drafted} />
+            <Stat label="Sent" value={sent} />
+            <Stat label="Accepted" value={accepted} />
+            <Stat label="Replied" value={replied} />
           </div>
         </Section>
 
-        <Section title={`Proof (${rows.length})`}>
-          <div className="row" style={{ marginBottom: 12 }}>
-            <Link className="chip" href="/record">
-              all
-            </Link>
+        <Section title="Proof" count={rows.length}>
+          <Toolbar
+            label="Company"
+            scroll
+            meta={rows.length > 0 ? <CopyButton text={markdown} label="Copy as markdown" /> : undefined}
+          >
+            <ChipLink href="/record" active={!sp.company}>
+              All
+            </ChipLink>
             {companies.map((c) => (
-              <Link className="chip" key={c} href={`/record?company=${encodeURIComponent(c)}`}>
+              <ChipLink key={c} href={`/record?company=${encodeURIComponent(c)}`} active={sp.company === c}>
                 {c}
-              </Link>
+              </ChipLink>
             ))}
-            {rows.length > 0 && <CopyButton text={markdown} label="Copy as markdown" />}
-          </div>
+          </Toolbar>
 
           {rows.length === 0 ? (
             <Empty>Nothing recorded yet.</Empty>
           ) : (
-            rows.map((r) => (
-              <article key={r.id} className="card">
-                <div className="spread">
-                  <h3 className="card-title">
-                    <ExternalLink href={r.url}>{r.title}</ExternalLink>
-                  </h3>
-                  <span style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    {stateOf(r) && (
-                      <span
-                        className="chip"
-                        style={
-                          r.state === 'merged'
-                            ? { background: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.35)', color: '#34d399' }
-                            : undefined
-                        }
-                      >
-                        {stateOf(r)}
-                      </span>
-                    )}
-                    <span className="chip">{KIND_LABEL[r.kind] ?? r.kind}</span>
-                  </span>
-                </div>
-                <div className="card-meta">
-                  {r.company ? `${r.company} · ` : ''}
-                  {formatDay(r.happened_at)}
-                </div>
-              </article>
-            ))
+            <List>
+              {rows.map((r) => (
+                <ListRow
+                  key={r.id}
+                  title={<ExternalLink href={r.url}>{r.title}</ExternalLink>}
+                  meta={
+                    <>
+                      {r.company ? `${r.company} · ` : ''}
+                      {formatDay(r.happened_at)}
+                    </>
+                  }
+                  trail={
+                    <>
+                      {stateOf(r) && <StatusBadge status={`pr_${r.state}`} />}
+                      <span className="chip">{KIND_LABEL[r.kind] ?? r.kind}</span>
+                    </>
+                  }
+                />
+              ))}
+            </List>
           )}
         </Section>
 
         <Section title="Add a pull request or issue" hint="Answers record themselves; upstream work is added here.">
-          <form action={submit} className="card">
-            <input name="title" required placeholder="Title" style={inputStyle} />
-            <input name="url" type="url" required placeholder="https://github.com/…" style={inputStyle} />
-            <input name="company" placeholder="Company (optional)" style={inputStyle} />
-            <select name="kind" defaultValue="pr" style={inputStyle}>
-              <option value="pr">Pull request</option>
-              <option value="issue">Issue</option>
-              <option value="runbook">Runbook</option>
-            </select>
+          <form action={submit} className="card form-stack">
+            <Field label="Title" htmlFor="rec-title">
+              <input id="rec-title" className="input" name="title" required />
+            </Field>
+            <Field label="Link" htmlFor="rec-url">
+              <input
+                id="rec-url"
+                className="input"
+                name="url"
+                type="url"
+                required
+                placeholder="https://github.com/…"
+              />
+            </Field>
+            <Field label="Company (optional)" htmlFor="rec-company">
+              <input id="rec-company" className="input" name="company" />
+            </Field>
+            <Field label="Kind" htmlFor="rec-kind">
+              <select id="rec-kind" className="input" name="kind" defaultValue="pr">
+                <option value="pr">Pull request</option>
+                <option value="issue">Issue</option>
+                <option value="runbook">Runbook</option>
+              </select>
+            </Field>
             <button className="btn primary" type="submit">
               Add
             </button>
@@ -211,16 +235,4 @@ export default async function Record({
       </main>
     </>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  marginBottom: 10,
-  padding: '10px 12px',
-  borderRadius: 8,
-  border: '1px solid var(--border-strong)',
-  background: 'var(--bg)',
-  color: 'var(--text)',
-  fontSize: 16,
-  fontFamily: 'inherit',
 }

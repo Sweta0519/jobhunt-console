@@ -1,6 +1,15 @@
-import Link from 'next/link'
 import { requireOwner } from '../../lib/supabase'
-import { NavBar, Section, Empty, StatusBadge, ExternalLink } from '../../components/ui'
+import {
+  NavBar,
+  PageHeader,
+  Section,
+  List,
+  ListRow,
+  Field,
+  Empty,
+  StatusBadge,
+  ExternalLink,
+} from '../../components/ui'
 import { ActionButton } from '../../components/ActionButton'
 import { Logo } from '../../components/Logo'
 import { addCompany, decideBoard, setCompanyWatch } from '../../actions'
@@ -65,19 +74,26 @@ export default async function Boards() {
     <>
       <NavBar current="/companies" waiting={0} />
       <main className="shell">
-        <h1>Job boards</h1>
-        <p className="sub">Companies the console reads directly. New roles show up here before they reach LinkedIn.</p>
-        <p className="card-meta">
-          <Link href="/companies">Back to companies</Link>
-        </p>
+        <PageHeader title="Job boards" back={{ href: '/companies', label: 'Companies' }}>
+          <p>Companies the console reads directly. New roles show up here before they reach LinkedIn.</p>
+        </PageHeader>
 
         <Section
           title="Add a company"
           hint="A website lets us look at their careers page. Added companies are searched within about 15 minutes."
         >
-          <form action={add} className="card">
-            <input name="name" required maxLength={120} placeholder="Company name" style={inputStyle} />
-            <input name="domain" placeholder="Website (optional), for example acme.com" style={inputStyle} />
+          <form action={add} className="card form-stack">
+            <Field label="Company name" htmlFor="board-name">
+              <input id="board-name" className="input" name="name" required maxLength={120} />
+            </Field>
+            <Field label="Website (optional)" htmlFor="board-domain" hint="For example acme.com">
+              <input
+                id="board-domain"
+                className="input"
+                name="domain"
+                aria-describedby="board-domain-hint"
+              />
+            </Field>
             <button className="btn primary" type="submit">
               Add company
             </button>
@@ -99,11 +115,15 @@ export default async function Boards() {
                   {' · '}
                   {c.postings} open, {c.relevant} relevant
                 </div>
-                {(c.sample_titles || []).slice(0, 5).map((t) => (
-                  <div key={t} className="card-meta">{t}</div>
-                ))}
-                <p className="sub" style={{ marginTop: 8 }}>{evidenceLine(c.evidence)}</p>
-                <div className="row" style={{ marginTop: 12 }}>
+                {(c.sample_titles || []).length > 0 && (
+                  <ul className="card-list card-meta">
+                    {(c.sample_titles || []).slice(0, 5).map((t) => (
+                      <li key={t}>{t}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="card-note">{evidenceLine(c.evidence)}</p>
+                <div className="card-actions">
                   <ActionButton primary action={decideBoard.bind(null, c.company_slug, c.kind, c.token, true)}>
                     Right company
                   </ActionButton>
@@ -120,28 +140,28 @@ export default async function Boards() {
           {watching.length === 0 ? (
             <Empty>No boards yet.</Empty>
           ) : (
-            watching.map((c) => (
-              <article key={c.slug} className="card">
-                <div className="spread">
-                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Logo name={c.name} slug={c.slug} path={c.logo_path} />
-                    {c.name}
-                  </h3>
-                  <StatusBadge status="board_watching" />
-                </div>
-                <div className="card-meta">
-                  {c.board_kind} · {open.get(c.slug) ?? 0} open
-                </div>
-                <div className="row" style={{ marginTop: 12 }}>
-                  <ActionButton
-                    action={setCompanyWatch.bind(null, c.slug, false)}
-                    confirm={`Stop watching ${c.name}? Its open roles will close.`}
-                  >
-                    Stop watching
-                  </ActionButton>
-                </div>
-              </article>
-            ))
+            <List>
+              {watching.map((c) => (
+                <ListRow
+                  key={c.slug}
+                  lead={<Logo name={c.name} slug={c.slug} path={c.logo_path} />}
+                  title={c.name}
+                  meta={`${c.board_kind} · ${open.get(c.slug) ?? 0} open`}
+                  trail={
+                    <>
+                      <StatusBadge status="board_watching" />
+                      <ActionButton
+                        small
+                        action={setCompanyWatch.bind(null, c.slug, false)}
+                        confirm={`Stop watching ${c.name}? Its open roles will close.`}
+                      >
+                        Stop watching
+                      </ActionButton>
+                    </>
+                  }
+                />
+              ))}
+            </List>
           )}
         </Section>
 
@@ -149,23 +169,28 @@ export default async function Boards() {
           {byHand.length === 0 ? (
             <Empty>Nothing here.</Empty>
           ) : (
-            byHand.map((c) => (
-              <article key={`${c.company_slug}|${c.kind}|${c.token}`} className="card">
-                <div className="spread">
-                  <h3 className="card-title">{nameOf.get(c.company_slug) ?? c.company_slug}</h3>
-                  <StatusBadge status="board_unsupported" />
-                </div>
-                {c.board_url && (
-                  <div className="card-meta">
-                    <ExternalLink href={c.board_url}>{c.board_url}</ExternalLink>
-                  </div>
-                )}
-                {(c.sample_titles || []).slice(0, 5).map((t) => (
-                  <div key={t} className="card-meta">{t}</div>
-                ))}
-                <p className="sub" style={{ marginTop: 8 }}>Check this one on its own site.</p>
-              </article>
-            ))
+            <List>
+              {byHand.map((c) => (
+                <ListRow
+                  key={`${c.company_slug}|${c.kind}|${c.token}`}
+                  title={nameOf.get(c.company_slug) ?? c.company_slug}
+                  meta={
+                    <>
+                      {c.board_url && (
+                        <div>
+                          <ExternalLink href={c.board_url}>{c.board_url}</ExternalLink>
+                        </div>
+                      )}
+                      {(c.sample_titles || []).slice(0, 5).map((t) => (
+                        <div key={t}>{t}</div>
+                      ))}
+                      <div>Check this one on its own site.</div>
+                    </>
+                  }
+                  trail={<StatusBadge status="board_unsupported" />}
+                />
+              ))}
+            </List>
           )}
         </Section>
       </main>
@@ -177,16 +202,4 @@ export default async function Boards() {
 async function add(form: FormData) {
   'use server'
   await addCompany(form)
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  marginBottom: 10,
-  padding: '10px 12px',
-  borderRadius: 8,
-  border: '1px solid var(--border-strong)',
-  background: 'var(--bg)',
-  color: 'var(--text)',
-  fontSize: 16,
-  fontFamily: 'inherit',
 }

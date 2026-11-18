@@ -1,7 +1,17 @@
 import { requireOwner } from '../lib/supabase'
 import { outcomeLine, FEED_CREDITS, type Job } from '../lib/queries'
 import { jobPrompt } from '../lib/prompts'
-import { NavBar, Section, Empty, StatusBadge, ExternalLink, formatDay } from '../components/ui'
+import {
+  NavBar,
+  PageHeader,
+  ViewTabs,
+  Toolbar,
+  ChipLink,
+  Empty,
+  StatusBadge,
+  ExternalLink,
+  formatDay,
+} from '../components/ui'
 import { ActionButton, CopyButton } from '../components/ActionButton'
 import Link from 'next/link'
 import { Logo } from '../components/Logo'
@@ -98,65 +108,77 @@ export default async function Jobs({
     <>
       <NavBar current="/jobs" waiting={0} />
       <main className="shell">
-        <h1>Jobs</h1>
-        <p className="sub">
-          Only Germany remote or EU-wide remote counts. Roles requiring German are kept
-          separately, never mixed in.
-        </p>
+        <PageHeader title="Jobs">
+          <p>
+            Only Germany remote or EU-wide remote counts. Roles requiring German are kept
+            separately, never mixed in.
+          </p>
+        </PageHeader>
 
-        <div className="row" style={{ marginBottom: 16 }}>
-          <Tab href="/jobs" label={`Open ${open.length}`} active={view === 'open'} />
-          <Tab href="/jobs?view=applied" label={`Applied ${appliedAll.length}`} active={view === 'applied'} />
-          <Tab href="/jobs?view=german" label={`Needs German ${german.length}`} active={view === 'german'} />
-          {backlog.length > 0 && (
-            <Tab href="/jobs?view=backlog" label={`Already open ${backlog.length}`} active={view === 'backlog'} />
-          )}
-        </div>
+        <ViewTabs
+          label="Job lists"
+          items={[
+            { href: '/jobs', label: 'Open', count: open.length, active: view === 'open' },
+            { href: '/jobs?view=applied', label: 'Applied', count: appliedAll.length, active: view === 'applied' },
+            { href: '/jobs?view=german', label: 'Needs German', count: german.length, active: view === 'german' },
+            ...(backlog.length > 0
+              ? [{ href: '/jobs?view=backlog', label: 'Already open', count: backlog.length, active: view === 'backlog' }]
+              : []),
+          ]}
+        />
 
         {view === 'open' && open.length > 0 && (
-          <div className="row" style={{ marginBottom: 14 }}>
-            <Tab href="/jobs" label="Newest first" active={sort === 'newest'} />
-            <Tab href="/jobs?sort=score" label="Best match first" active={sort === 'score'} />
-            <span className="card-meta num" style={{ marginLeft: 'auto' }}>
-              {open.filter((j) => postedAt(j) >= new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)).length} posted in the last 7 days
-            </span>
-          </div>
+          <Toolbar
+            label="Sort jobs"
+            meta={
+              <span className="num">
+                {open.filter((j) => postedAt(j) >= new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)).length} posted in the last 7 days
+              </span>
+            }
+          >
+            <ChipLink href="/jobs" active={sort === 'newest'}>Newest first</ChipLink>
+            <ChipLink href="/jobs?sort=score" active={sort === 'score'}>Best match first</ChipLink>
+          </Toolbar>
         )}
 
         {view === 'applied' && appliedAll.length > 0 && (
           <>
-            <div className="row" style={{ marginBottom: 8 }}>
+            <Toolbar label="Year" scroll>
               {years.map((y) => (
-                <Tab
+                <ChipLink
                   key={y}
                   href={`/jobs?view=applied&year=${y}${outcome !== 'all' ? `&outcome=${outcome}` : ''}`}
-                  label={`${y} · ${appliedAll.filter((j) => yearOf(j) === y).length}`}
+                  count={appliedAll.filter((j) => yearOf(j) === y).length}
                   active={year === y}
-                />
+                >
+                  {y}
+                </ChipLink>
               ))}
-              <Tab
+              <ChipLink
                 href={`/jobs?view=applied&year=all${outcome !== 'all' ? `&outcome=${outcome}` : ''}`}
-                label={`All years · ${appliedAll.length}`}
+                count={appliedAll.length}
                 active={year === 'all'}
-              />
-            </div>
-            <div className="row" style={{ marginBottom: 14 }}>
-              <Tab href={`/jobs?view=applied&year=${year}`} label={`All ${byOutcome.all.length}`} active={outcome === 'all'} />
-              <Tab href={`/jobs?view=applied&year=${year}&outcome=waiting`} label={`Waiting ${byOutcome.waiting.length}`} active={outcome === 'waiting'} />
-              <Tab href={`/jobs?view=applied&year=${year}&outcome=interview`} label={`Interviewing ${byOutcome.interview.length}`} active={outcome === 'interview'} />
-              <Tab href={`/jobs?view=applied&year=${year}&outcome=rejected`} label={`Rejected ${byOutcome.rejected.length}`} active={outcome === 'rejected'} />
-              <span className="card-meta num" style={{ marginLeft: 'auto' }}>
-                {funnel.interviewed} reached an interview
-              </span>
-            </div>
+              >
+                All years
+              </ChipLink>
+            </Toolbar>
+            <Toolbar label="Outcome" meta={<span className="num">{funnel.interviewed} reached an interview</span>}>
+              <ChipLink href={`/jobs?view=applied&year=${year}`} count={byOutcome.all.length} active={outcome === 'all'}>All</ChipLink>
+              <ChipLink href={`/jobs?view=applied&year=${year}&outcome=waiting`} count={byOutcome.waiting.length} active={outcome === 'waiting'}>Waiting</ChipLink>
+              <ChipLink href={`/jobs?view=applied&year=${year}&outcome=interview`} count={byOutcome.interview.length} active={outcome === 'interview'}>Interviewing</ChipLink>
+              <ChipLink href={`/jobs?view=applied&year=${year}&outcome=rejected`} count={byOutcome.rejected.length} active={outcome === 'rejected'}>Rejected</ChipLink>
+            </Toolbar>
           </>
         )}
 
-        <Section title="">
-          {shown.length === 0 ? (
-            <Empty>Nothing here.</Empty>
-          ) : (
-            <FilterBar placeholder="Filter by company, title or location…  (press /)" total={shown.length}>
+        {shown.length === 0 ? (
+          <Empty>Nothing here.</Empty>
+        ) : (
+            <FilterBar
+              key={`${view}|${sort}|${year}|${outcome}`}
+              placeholder="Filter by company, title or location…  (press /)"
+              total={shown.length}
+            >
             {shown.map((j) => (
               <article
                 key={j.id}
@@ -164,11 +186,11 @@ export default async function Jobs({
                 data-search={`${j.company} ${j.title} ${j.location ?? ''} ${j.status}`}
               >
                 <div className="spread">
-                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <h3 className="card-title title-lead">
                     <Logo name={j.company} slug={j.company_slug} path={logos.get(j.company_slug ?? '')} />
                     {j.careers_url || j.url ? <ExternalLink href={(j.careers_url || j.url)!}>{j.title}</ExternalLink> : j.title}
                   </h3>
-                  <span className="score num">{j.score ?? '—'}</span>
+                  <span className="score num">{j.score ?? '-'}</span>
                 </div>
                 <div className="card-meta">
                   {j.company} · {j.location || 'location unknown'}
@@ -180,7 +202,7 @@ export default async function Jobs({
                     </>
                   )}
                 </div>
-                <div className="row" style={{ marginTop: 8 }}>
+                <div className="card-tags">
                   <StatusBadge status={j.status} />
                   {draftOf.get(j.id) && (
                     <Link href={`/resumes/${draftOf.get(j.id)!.id}`}>
@@ -193,14 +215,12 @@ export default async function Jobs({
                   {outcomeLine(j) && <span className="card-meta">{outcomeLine(j)}</span>}
                 </div>
                 {j.outcome_note && view === 'applied' && (
-                  <p className="sub" style={{ marginTop: 6 }}>{j.outcome_note}</p>
+                  <p className="card-note">{j.outcome_note}</p>
                 )}
                 {j.score_notes?.location && (
-                  <p className="sub" style={{ marginTop: 8 }}>
-                    {j.score_notes.location}
-                  </p>
+                  <p className="card-note">{j.score_notes.location}</p>
                 )}
-                <div className="row" style={{ marginTop: 12 }}>
+                <div className="card-actions">
                   {!APPLIED.includes(j.status) && (
                     <ActionButton action={setJobStatus.bind(null, j.id, 'applied')}>
                       Mark applied
@@ -231,21 +251,8 @@ export default async function Jobs({
               </article>
             ))}
             </FilterBar>
-          )}
-        </Section>
+        )}
       </main>
     </>
-  )
-}
-
-function Tab({ href, label, active }: { href: string; label: string; active: boolean }) {
-  return (
-    <a
-      className="chip"
-      href={href}
-      style={active ? { background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600 } : undefined}
-    >
-      {label}
-    </a>
   )
 }

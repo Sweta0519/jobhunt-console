@@ -53,42 +53,29 @@ export function FilterBar({
 
   return (
     <>
-      <div className="row" style={{ marginBottom: 12 }}>
+      <div className="toolbar">
         <input
           ref={inputRef}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={placeholder}
           aria-label={placeholder}
-          style={{
-            flex: '1 1 220px',
-            padding: '9px 12px',
-            borderRadius: 8,
-            border: '1px solid var(--border-strong)',
-            background: 'var(--surface)',
-            color: 'var(--text)',
-            fontSize: 16,
-            fontFamily: 'inherit',
-          }}
+          className="input filter-input"
         />
         {chips.map((c) => (
           <button
             key={c.term}
             type="button"
             className="chip"
+            aria-pressed={q === c.term}
             onClick={() => setQ(q === c.term ? '' : c.term)}
-            style={
-              q === c.term
-                ? { background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }
-                : { cursor: 'pointer' }
-            }
           >
             {c.label}
           </button>
         ))}
       </div>
       {q && (
-        <p className="sub num">
+        <p className="sub num" aria-live="polite">
           {shown.length} of {total ?? (children as unknown[]).length}
         </p>
       )}
@@ -109,25 +96,16 @@ export function Expandable({ text, lines = 6 }: { text: string; lines?: number }
   return (
     <>
       <div
-        className="card-body"
-        style={
-          open
-            ? undefined
-            : {
-                display: '-webkit-box',
-                WebkitLineClamp: lines,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-              }
-        }
+        className={open ? 'card-body' : 'card-body clamp'}
+        style={!open && lines !== 6 ? ({ '--lines': lines } as React.CSSProperties) : undefined}
       >
         {text}
       </div>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="chip"
-        style={{ cursor: 'pointer', marginTop: -4 }}
+        className="chip expand-toggle"
+        aria-expanded={open}
       >
         {open ? 'Show less' : 'Show all'}
       </button>
@@ -175,27 +153,18 @@ export function InlineEdit({
   const over = limit ? text.length > limit : false
 
   return (
-    <div style={{ width: '100%' }}>
+    <div className="inline-edit">
       <textarea
         value={text}
         aria-label={label}
         onChange={(e) => setText(e.target.value)}
         rows={Math.min(16, Math.max(5, text.split('\n').length + 2))}
-        style={{
-          width: '100%',
-          padding: 12,
-          borderRadius: 8,
-          border: `1px solid ${over ? 'var(--fail)' : 'var(--border-strong)'}`,
-          background: 'var(--bg)',
-          color: 'var(--text)',
-          fontSize: 15,
-          fontFamily: 'inherit',
-          lineHeight: 1.55,
-        }}
+        className="input"
+        aria-invalid={over}
       />
-      <div className="row" style={{ marginTop: 8 }}>
+      <div className="card-actions">
         {limit && (
-          <span className="card-meta num" style={over ? { color: 'var(--fail)' } : undefined}>
+          <span className={`card-meta num${over ? ' is-over' : ''}`}>
             {text.length} / {limit}
           </span>
         )}

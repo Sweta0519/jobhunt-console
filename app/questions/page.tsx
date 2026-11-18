@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { requireOwner } from '../lib/supabase'
 import { pickQuestions, type Question } from '../lib/queries'
-import { NavBar, Section, Empty, ExternalLink, relative } from '../components/ui'
+import { NavBar, PageHeader, Toolbar, ChipLink, Section, Empty, ExternalLink, relative } from '../components/ui'
 import { Logo } from '../components/Logo'
 import { FilterBar } from '../components/Interactive'
 
@@ -43,21 +43,22 @@ export default async function Questions({
     <>
       <NavBar current="/questions" waiting={0} />
       <main className="shell">
-        <h1>Questions</h1>
-        <p className="sub">{rows.length} open, refreshed daily without your laptop.</p>
+        <PageHeader title="Questions" count={rows.length}>
+          <p>Open questions, refreshed daily without your laptop.</p>
+        </PageHeader>
 
-        <div className="row" style={{ marginBottom: 16 }}>
-          <Link className="chip" href="/questions">
-            all
-          </Link>
+        <Toolbar label="Company" scroll>
+          <ChipLink href="/questions" active={!sp.company}>
+            All
+          </ChipLink>
           {Object.entries(byCompany)
             .sort((a, b) => b[1] - a[1])
             .map(([c, n]) => (
-              <Link className="chip" key={c} href={`/questions?company=${encodeURIComponent(c)}`}>
-                {c} {n}
-              </Link>
+              <ChipLink key={c} href={`/questions?company=${encodeURIComponent(c)}`} count={n} active={sp.company === c}>
+                {c}
+              </ChipLink>
             ))}
-        </div>
+        </Toolbar>
 
         {starred.length > 0 && !sp.company && (
           <Section title="Saved for desktop" hint="Picked on your phone to draft at the desk.">
@@ -87,22 +88,22 @@ function QuestionRow({ q, logo }: { q: Question; logo?: string | null }) {
   return (
     <article className="card" data-search={`${q.title} ${q.site ?? ''} ${q.company ?? ''} ${q.why ?? ''}`}>
       <div className="spread">
-        <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <h3 className="card-title title-lead">
           <Logo name={q.company} slug={q.company_slug} path={logo} size={24} />
           <Link href={`/questions/${encodeURIComponent(q.id)}`}>{q.title}</Link>
         </h3>
-        <span className="score num">{q.rank ?? '—'}</span>
+        <span className="score num">{q.rank ?? '-'}</span>
       </div>
       <div className="card-meta">
         {q.site} · {q.comments === 0 ? 'no replies' : `${q.comments} replies`} · {relative(q.asked_at)}
         {q.starred ? ' · saved' : ''}
       </div>
-      <div className="row" style={{ marginTop: 10 }}>
+      <div className="card-actions">
         <Link className="btn" href={`/questions/${encodeURIComponent(q.id)}`}>
           Open
         </Link>
-        <ExternalLink href={q.url}>
-          <span className="btn">Thread</span>
+        <ExternalLink className="btn" href={q.url}>
+          Thread
         </ExternalLink>
       </div>
     </article>

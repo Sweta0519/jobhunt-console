@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useId, useState, useTransition } from 'react'
+import { Field } from './Field'
 
 type Result = { ok: true } | { ok: false; message: string }
 
@@ -31,6 +32,9 @@ export function DrillActions({
   const [open, setOpen] = useState(false)
   const [url, setUrl] = useState(evidence ?? '')
   const [text, setText] = useState(note ?? '')
+  const uid = useId()
+  const urlId = `${uid}-evidence`
+  const textId = `${uid}-found`
 
   const run = (s: string, e?: string, n?: string) => {
     setError(null)
@@ -42,7 +46,7 @@ export function DrillActions({
   }
 
   return (
-    <div style={{ width: '100%' }}>
+    <div className="drill-actions">
       <div className="row">
         {status === 'todo' && (
           <button type="button" className="btn" disabled={pending} onClick={() => run('doing')}>
@@ -83,24 +87,29 @@ export function DrillActions({
       </div>
 
       {open && (
-        <div className="card" style={{ marginTop: 10 }}>
-          <label style={{ fontSize: 13, fontWeight: 600 }}>
-            Evidence link{level === 3 ? ' (required for a public drill)' : ' (optional)'}
-          </label>
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://…"
-            style={field}
-          />
-          <label style={{ fontSize: 13, fontWeight: 600 }}>What you found, in a line or two</label>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={3}
-            placeholder="The one thing you would say about this in an interview."
-            style={{ ...field, lineHeight: 1.5 }}
-          />
+        <div className="card nested form-stack">
+          <Field
+            label={`Evidence link${level === 3 ? ' (required for a public drill)' : ' (optional)'}`}
+            htmlFor={urlId}
+          >
+            <input
+              id={urlId}
+              className="input"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://…"
+            />
+          </Field>
+          <Field label="What you found, in a line or two" htmlFor={textId}>
+            <textarea
+              id={textId}
+              className="input"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={3}
+              placeholder="The one thing you would say about this in an interview."
+            />
+          </Field>
           <div className="row">
             <button
               type="button"
@@ -118,17 +127,4 @@ export function DrillActions({
       )}
     </div>
   )
-}
-
-const field: React.CSSProperties = {
-  width: '100%',
-  marginTop: 6,
-  marginBottom: 12,
-  padding: '9px 12px',
-  borderRadius: 8,
-  border: '1px solid var(--border-strong)',
-  background: 'var(--bg)',
-  color: 'var(--text)',
-  fontSize: 15,
-  fontFamily: 'inherit',
 }

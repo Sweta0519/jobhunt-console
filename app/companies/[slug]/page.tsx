@@ -3,7 +3,18 @@ import { notFound } from 'next/navigation'
 import { requireOwner } from '../../lib/supabase'
 import type { Outreach } from '../../lib/queries'
 import { prepPrompt, type Drill } from '../../lib/prompts'
-import { NavBar, Section, Empty, StatusBadge, ExternalLink, formatDay, relative } from '../../components/ui'
+import {
+  NavBar,
+  PageHeader,
+  Section,
+  List,
+  ListRow,
+  Empty,
+  StatusBadge,
+  ExternalLink,
+  formatDay,
+  relative,
+} from '../../components/ui'
 import { CopyButton } from '../../components/ActionButton'
 import { DrillActions } from '../../components/DrillActions'
 import { Logo } from '../../components/Logo'
@@ -74,26 +85,25 @@ export default async function Company({ params }: { params: Promise<{ slug: stri
     <>
       <NavBar current="/companies" waiting={0} />
       <main className="shell">
-        <p className="sub" style={{ marginTop: 20 }}>
-          <Link href="/companies">← Companies</Link>
-        </p>
-        <div className="spread">
-          <h1 style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Logo name={name} slug={slug} path={(co?.logo_path as string | null) ?? null} size={34} />
-            {name}
-          </h1>
-          {drills.length > 0 && (
-            <span className="num" style={{ color: 'var(--muted)' }}>
-              {done}/{drills.length} drills done
-            </span>
-          )}
-        </div>
-        <p className="sub">
-          {applied.length} application{applied.length === 1 ? '' : 's'} · {work.length} public artifact
-          {work.length === 1 ? '' : 's'} · {talks.filter((t) => t.status !== 'skipped').length} contact
-          {talks.filter((t) => t.status !== 'skipped').length === 1 ? '' : 's'}
-          {open.length > 0 ? ` · ${open.length} open role${open.length === 1 ? '' : 's'} not applied to` : ''}
-        </p>
+        <PageHeader
+          title={name}
+          back={{ href: '/companies', label: 'Companies' }}
+          lead={<Logo name={name} slug={slug} path={(co?.logo_path as string | null) ?? null} size={34} />}
+          actions={
+            drills.length > 0 ? (
+              <span className="chip num">
+                {done}/{drills.length} drills done
+              </span>
+            ) : undefined
+          }
+        >
+          <p>
+            {applied.length} application{applied.length === 1 ? '' : 's'} · {work.length} public artifact
+            {work.length === 1 ? '' : 's'} · {talks.filter((t) => t.status !== 'skipped').length} contact
+            {talks.filter((t) => t.status !== 'skipped').length === 1 ? '' : 's'}
+            {open.length > 0 ? ` · ${open.length} open role${open.length === 1 ? '' : 's'} not applied to` : ''}
+          </p>
+        </PageHeader>
 
         {drills.length > 0 && (
           <Section
@@ -104,39 +114,39 @@ export default async function Company({ params }: { params: Promise<{ slug: stri
               const group = drills.filter((d) => d.level === lvl)
               if (!group.length) return null
               return (
-                <div key={lvl} style={{ marginBottom: 18 }}>
-                  <h3 style={{ margin: '8px 0 4px' }}>
-                    {LEVEL[lvl].label}{' '}
-                    <span className="num" style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 400 }}>
+                <div key={lvl}>
+                  <h3 className="subhead">
+                    {LEVEL[lvl].label}
+                    <span className="h-count num">
                       {group.filter((d) => d.status === 'done').length}/{group.length}
                     </span>
                   </h3>
-                  <p className="sub" style={{ marginTop: 0 }}>{LEVEL[lvl].hint}</p>
+                  <p className="sub">{LEVEL[lvl].hint}</p>
                   {group.map((d) => (
-                    <article key={d.id} className="card" style={d.status === 'skipped' ? { opacity: 0.6 } : undefined}>
+                    <article key={d.id} className={`card${d.status === 'skipped' ? ' is-muted' : ''}`}>
                       <div className="spread">
-                        <h4 className="card-title" style={{ margin: 0 }}>{d.title}</h4>
+                        <h4 className="card-title">{d.title}</h4>
                         <StatusBadge status={d.status} />
                       </div>
-                      <p className="sub" style={{ marginTop: 8 }}>
+                      <p className="card-note">
                         <strong>Why:</strong> {d.why}
                       </p>
                       <div className="card-body">{d.how}</div>
                       {d.note && (
-                        <p style={{ marginTop: 10, marginBottom: 0 }}>
+                        <p className="card-note">
                           <strong>Found:</strong> {d.note}
                         </p>
                       )}
                       {d.evidence_url && (
-                        <p className="card-meta" style={{ marginTop: 6 }}>
+                        <p className="card-meta card-note">
                           <ExternalLink href={d.evidence_url}>{d.evidence_url}</ExternalLink>
                           {d.done_at ? ` · ${relative(d.done_at)}` : ''}
                         </p>
                       )}
-                      <div className="row" style={{ marginTop: 12 }}>
+                      <div className="card-actions">
                         <CopyButton text={prepPrompt(d, name)} label="Copy prompt for Claude Code" />
                       </div>
-                      <div style={{ marginTop: 10 }}>
+                      <div className="card-section">
                         <DrillActions
                           status={d.status}
                           level={d.level}
@@ -165,21 +175,24 @@ export default async function Company({ params }: { params: Promise<{ slug: stri
           {js.length === 0 ? (
             <Empty>No roles recorded.</Empty>
           ) : (
-            js.map((j) => (
-              <article key={j.id} className="card">
-                <div className="spread">
-                  <h3 className="card-title">
-                    {j.careers_url || j.url ? <ExternalLink href={(j.careers_url || j.url)!}>{j.title}</ExternalLink> : j.title}
-                  </h3>
-                  <StatusBadge status={j.closed && j.status === 'found' ? 'closed' : j.status} />
-                </div>
-                <div className="card-meta">
-                  {j.location ?? 'location not stated'}
-                  {j.applied_at ? ` · applied ${formatDay(j.applied_at)}` : ` · seen ${formatDay(j.first_seen_at)}`}
-                  {j.score != null ? ` · score ${j.score}` : ''}
-                </div>
-              </article>
-            ))
+            <List>
+              {js.map((j) => (
+                <ListRow
+                  key={j.id}
+                  title={
+                    j.careers_url || j.url ? <ExternalLink href={(j.careers_url || j.url)!}>{j.title}</ExternalLink> : j.title
+                  }
+                  meta={
+                    <>
+                      {j.location ?? 'location not stated'}
+                      {j.applied_at ? ` · applied ${formatDay(j.applied_at)}` : ` · seen ${formatDay(j.first_seen_at)}`}
+                      {j.score != null ? ` · score ${j.score}` : ''}
+                    </>
+                  }
+                  trail={<StatusBadge status={j.closed && j.status === 'found' ? 'closed' : j.status} />}
+                />
+              ))}
+            </List>
           )}
         </Section>
 
@@ -189,17 +202,16 @@ export default async function Company({ params }: { params: Promise<{ slug: stri
               Nothing yet. The <Link href="/questions">open questions</Link> for {name} are the way in.
             </Empty>
           ) : (
-            work.map((w) => (
-              <article key={w.id} className="card">
-                <div className="spread">
-                  <h3 className="card-title">
-                    <ExternalLink href={w.url}>{w.title}</ExternalLink>
-                  </h3>
-                  <span className="chip">{w.kind}</span>
-                </div>
-                <div className="card-meta">{formatDay(w.happened_at)}</div>
-              </article>
-            ))
+            <List>
+              {work.map((w) => (
+                <ListRow
+                  key={w.id}
+                  title={<ExternalLink href={w.url}>{w.title}</ExternalLink>}
+                  meta={formatDay(w.happened_at)}
+                  trail={<span className="chip">{w.kind}</span>}
+                />
+              ))}
+            </List>
           )}
         </Section>
 
@@ -208,35 +220,40 @@ export default async function Company({ params }: { params: Promise<{ slug: stri
             <Empty>No contacts recorded.</Empty>
           ) : (
             <>
-              {talks.map((o) => (
-                <article key={o.id} className="card">
-                  <div className="spread">
-                    <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Logo name={o.person_name} slug={o.person_name} size={24} />
-                      {o.person_url ? <ExternalLink href={o.person_url}>{o.person_name}</ExternalLink> : o.person_name}
-                    </h3>
-                    <StatusBadge status={o.status} />
-                  </div>
-                  <div className="card-meta">
-                    {o.channel.replace('_', ' ')} · {o.kind}
-                    {o.sent_at ? ` · sent ${formatDay(o.sent_at)}` : ` · drafted ${formatDay(o.created_at)}`}
-                    {o.replied_at ? ` · replied ${formatDay(o.replied_at)}` : ''}
-                  </div>
-                  <div className="row" style={{ marginTop: 10 }}>
-                    <Link className="btn" href={`/outreach/${o.id}`}>Open</Link>
-                  </div>
-                </article>
-              ))}
+              {talks.length > 0 && (
+                <List>
+                  {talks.map((o) => (
+                    <ListRow
+                      key={o.id}
+                      lead={<Logo name={o.person_name} slug={o.person_name} size={24} />}
+                      title={o.person_url ? <ExternalLink href={o.person_url}>{o.person_name}</ExternalLink> : o.person_name}
+                      meta={
+                        <>
+                          {o.channel.replace('_', ' ')} · {o.kind}
+                          {o.sent_at ? ` · sent ${formatDay(o.sent_at)}` : ` · drafted ${formatDay(o.created_at)}`}
+                          {o.replied_at ? ` · replied ${formatDay(o.replied_at)}` : ''}
+                        </>
+                      }
+                      trail={
+                        <>
+                          <StatusBadge status={o.status} />
+                          <Link className="btn sm" href={`/outreach/${o.id}`}>Open</Link>
+                        </>
+                      }
+                    />
+                  ))}
+                </List>
+              )}
               {ppl.filter((p) => !talks.some((t) => t.person_id === p.id)).length > 0 && (
                 <div className="card">
-                  <div className="card-meta" style={{ marginBottom: 8 }}>Known, not yet contacted</div>
-                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  <div className="card-meta">Known, not yet contacted</div>
+                  <ul className="card-list">
                     {ppl
                       .filter((p) => !talks.some((t) => t.person_id === p.id))
                       .map((p) => (
                         <li key={p.id}>
                           {p.url ? <ExternalLink href={p.url}>{p.name}</ExternalLink> : p.name}
-                          {p.position || p.headline ? ` — ${p.position || p.headline}` : ''}
+                          {p.position || p.headline ? `, ${p.position || p.headline}` : ''}
                           {p.relationship === 'connection' ? ' (1st)' : ''}
                         </li>
                       ))}

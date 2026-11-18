@@ -1,9 +1,8 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireOwner } from '../../lib/supabase'
 import type { Question } from '../../lib/queries'
 import { questionPrompt } from '../../lib/prompts'
-import { NavBar, StatusBadge, ExternalLink, relative } from '../../components/ui'
+import { NavBar, PageHeader, Field, StatusBadge, ExternalLink, relative } from '../../components/ui'
 import { ActionButton, CopyButton } from '../../components/ActionButton'
 import { skipQuestion, toggleStar, markAnswered } from '../../actions'
 
@@ -27,25 +26,24 @@ export default async function QuestionDetail({ params }: { params: Promise<{ id:
     <>
       <NavBar current="/questions" waiting={0} />
       <main className="shell">
-        <p className="sub" style={{ marginTop: 20 }}>
-          <Link href="/questions">← Questions</Link>
-        </p>
-
-        <div className="spread">
-          <h1 style={{ marginTop: 8 }}>{q.title}</h1>
-          <StatusBadge status={q.status} />
-        </div>
-        <p className="sub">
-          {q.site} · {q.comments === 0 ? 'no replies' : `${q.comments} replies`} ·{' '}
-          {relative(q.asked_at)} · rank <span className="num">{q.rank ?? '—'}</span>
-        </p>
-        {q.why && <p className="sub">{q.why}</p>}
+        <PageHeader
+          compact
+          title={q.title}
+          back={{ href: '/questions', label: 'Questions' }}
+          actions={<StatusBadge status={q.status} />}
+        >
+          <p>
+            {q.site} · {q.comments === 0 ? 'no replies' : `${q.comments} replies`} ·{' '}
+            {relative(q.asked_at)} · rank <span className="num">{q.rank ?? '-'}</span>
+          </p>
+          {q.why && <p>{q.why}</p>}
+        </PageHeader>
 
         {q.excerpt && <div className="card-body">{q.excerpt}</div>}
 
-        <div className="row" style={{ marginTop: 16 }}>
-          <ExternalLink href={q.url}>
-            <span className="btn primary">Open the thread</span>
+        <div className="card-actions">
+          <ExternalLink className="btn primary" href={q.url}>
+            Open the thread
           </ExternalLink>
           <CopyButton text={questionPrompt(q)} label="Copy prompt for Claude Code" />
           <ActionButton action={toggleStar.bind(null, id, !q.starred)}>
@@ -63,21 +61,26 @@ export default async function QuestionDetail({ params }: { params: Promise<{ id:
         </p>
         {q.status === 'answered' && q.answer_url ? (
           <div className="card">
-            <p style={{ margin: 0 }}>
+            <p>
               Answered {relative(q.answered_at ?? null)} ·{' '}
               <ExternalLink href={q.answer_url}>your reply</ExternalLink>
             </p>
           </div>
         ) : (
-          <form action={record} className="card">
-            <input
-              name="url"
-              type="url"
-              required
-              placeholder="https://… link to your reply"
-              style={inputStyle}
-            />
-            <input name="note" type="text" placeholder="note (optional)" style={inputStyle} />
+          <form action={record} className="card form-stack">
+            <Field label="Link to your reply" htmlFor="answer-url">
+              <input
+                id="answer-url"
+                className="input"
+                name="url"
+                type="url"
+                required
+                placeholder="https://…"
+              />
+            </Field>
+            <Field label="Note (optional)" htmlFor="answer-note">
+              <input id="answer-note" className="input" name="note" type="text" />
+            </Field>
             <button className="btn primary" type="submit">
               Mark answered
             </button>
@@ -93,16 +96,4 @@ export default async function QuestionDetail({ params }: { params: Promise<{ id:
       </main>
     </>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  marginBottom: 10,
-  padding: '10px 12px',
-  borderRadius: 8,
-  border: '1px solid var(--border-strong)',
-  background: 'var(--bg)',
-  color: 'var(--text)',
-  fontSize: 16,
-  fontFamily: 'inherit',
 }

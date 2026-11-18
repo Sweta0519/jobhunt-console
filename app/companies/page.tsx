@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { requireOwner } from '../lib/supabase'
-import { NavBar, Section, Empty, formatDay } from '../components/ui'
+import { NavBar, PageHeader, Section, Empty, formatDay } from '../components/ui'
 import { Logo } from '../components/Logo'
 
 export const dynamic = 'force-dynamic'
@@ -58,14 +58,16 @@ export default async function Companies() {
     <>
       <NavBar current="/companies" waiting={0} />
       <main className="shell">
-        <h1>Companies</h1>
-        <p className="sub">
-          Where you have applied, and how ready you are for the interview there. A drill
-          counts as done only with evidence behind it.
-        </p>
-        <p className="card-meta">
-          <Link href="/companies/boards">Job boards</Link>
-        </p>
+        <PageHeader
+          title="Companies"
+          count={rows.length}
+          actions={<Link className="btn" href="/companies/boards">Job boards</Link>}
+        >
+          <p>
+            Where you have applied, and how ready you are for the interview there. A drill
+            counts as done only with evidence behind it.
+          </p>
+        </PageHeader>
 
         <Section
           title="Preparing"
@@ -100,14 +102,14 @@ function CompanyCard({
 }) {
   const pct = r.drills ? Math.round((r.done / r.drills) * 100) : 0
   return (
-    <article className="card">
+    <article className="card card-click">
       <div className="spread">
-        <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <h3 className="card-title title-lead">
           <Logo name={r.name} slug={r.slug} path={logo} size={26} />
-          <Link href={`/companies/${encodeURIComponent(r.slug)}`}>{r.name}</Link>
+          <Link className="card-link" href={`/companies/${encodeURIComponent(r.slug)}`}>{r.name}</Link>
         </h3>
         {r.drills > 0 && (
-          <span className="num" style={{ fontSize: 13, color: 'var(--muted)' }}>
+          <span className="chip num">
             {r.done}/{r.drills} drills
           </span>
         )}
@@ -119,22 +121,14 @@ function CompanyCard({
       </div>
       {r.drills > 0 && (
         <>
-          <div
-            aria-hidden="true"
-            style={{ height: 6, background: 'var(--border)', borderRadius: 3, marginTop: 12, overflow: 'hidden' }}
-          >
-            <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)' }} />
+          <div className="progress" aria-hidden="true">
+            <span style={{ width: `${pct}%` }} />
           </div>
-          <div className="card-meta" style={{ marginTop: 6 }}>
+          <div className="card-meta card-note">
             Tickets: {r.ticketsDone}/{r.tickets} done
           </div>
         </>
       )}
-      <div className="row" style={{ marginTop: 12 }}>
-        <Link className="btn primary" href={`/companies/${encodeURIComponent(r.slug)}`}>
-          Open
-        </Link>
-      </div>
     </article>
   )
 }

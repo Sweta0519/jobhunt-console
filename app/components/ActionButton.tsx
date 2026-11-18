@@ -16,12 +16,14 @@ export function ActionButton({
   action,
   children,
   primary,
+  small,
   confirm,
   disabled,
 }: {
   action: () => Promise<Result>
   children: React.ReactNode
   primary?: boolean
+  small?: boolean
   confirm?: string
   disabled?: boolean
 }) {
@@ -32,7 +34,7 @@ export function ActionButton({
     <>
       <button
         type="button"
-        className={`btn${primary ? ' primary' : ''}`}
+        className={`btn${primary ? ' primary' : ''}${small ? ' sm' : ''}`}
         disabled={pending || disabled}
         onClick={() => {
           if (confirm && !window.confirm(confirm)) return
