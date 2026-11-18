@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { requireOwner } from './lib/supabase'
 import { getToday, tokenDaysLeft } from './lib/queries'
-import { NavBar, Section, Empty, StatusBadge, ExternalLink, formatDay, relative } from './components/ui'
+import { NavBar, Section, Stat, Empty, StatusBadge, ExternalLink, formatDay, relative } from './components/ui'
 import { Logo } from './components/Logo'
 import { Preview } from './components/Preview'
 import { postPreviews } from './lib/avatars'
@@ -76,6 +76,35 @@ export default async function Today() {
             </div>
           </Section>
         )}
+
+        <div className="stats">
+          <Stat
+            label="Waiting on you"
+            value={waiting}
+            href="/approvals"
+            hint={`${d.waitingOutreach.length} outreach · ${d.waitingPosts.length} posts`}
+            tone={waiting > 0 ? 'wait' : undefined}
+          />
+          <Stat
+            label="Open questions"
+            value={d.openQuestionCount}
+            href="/questions"
+            hint={`${d.answer.length} picked for today`}
+          />
+          <Stat
+            label="Follow-ups due"
+            value={d.followups.length}
+            href={d.followups.length > 0 ? '#followups' : '/outreach'}
+            hint="within 24h"
+            tone={d.followups.length > 0 ? 'wait' : undefined}
+          />
+          <Stat
+            label="Today's post"
+            value={d.todayPost ? <StatusBadge status={d.todayPost.status} /> : 'None'}
+            href="/posts"
+            hint={d.todayPost?.format}
+          />
+        </div>
 
         <Section
           title="Answer today"
@@ -157,34 +186,8 @@ export default async function Today() {
           )}
         </Section>
 
-        <Section title="Waiting on you">
-          {waiting === 0 ? (
-            <Empty>Nothing waiting for a decision.</Empty>
-          ) : (
-            <div className="card">
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {d.waitingOutreach.length > 0 && (
-                  <li>
-                    <Link href="/approvals">
-                      {d.waitingOutreach.length} outreach draft
-                      {d.waitingOutreach.length === 1 ? '' : 's'}
-                    </Link>
-                  </li>
-                )}
-                {d.waitingPosts.length > 0 && (
-                  <li>
-                    <Link href="/approvals">
-                      {d.waitingPosts.length} post{d.waitingPosts.length === 1 ? '' : 's'}
-                    </Link>
-                  </li>
-                )}
-              </ul>
-            </div>
-          )}
-        </Section>
-
         {d.followups.length > 0 && (
-          <Section title="Follow-ups due">
+          <Section title="Follow-ups due" id="followups">
             {d.followups.map((o) => (
               <article key={o.id} className="card">
                 <div className="spread">

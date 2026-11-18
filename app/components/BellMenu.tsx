@@ -94,17 +94,15 @@ export function BellMenu({ notes }: { notes: Note[] }) {
         <div
           role="dialog"
           aria-label="Notifications"
+          className="bell-panel"
           style={{
-            position: 'absolute',
-            right: 0,
-            top: 38,
             width: 'min(360px, calc(100vw - 32px))',
             maxHeight: 460,
             overflowY: 'auto',
             background: 'var(--surface)',
             border: '1px solid var(--border)',
             borderRadius: 10,
-            boxShadow: '0 8px 28px rgba(0,0,0,0.10)',
+            boxShadow: 'var(--shadow-pop)',
             zIndex: 50,
             padding: 6,
           }}
