@@ -28,6 +28,7 @@ import { DRAFT_SCHEMA, validateDraft } from './lib/resume/schema.mjs';
 import { composeDoc, normalizeOutput } from './lib/resume/compose.mjs';
 import { checkFacts } from './lib/resume/facts.mjs';
 import { SYSTEM_PROMPT, buildUserMessage, buildFeedback } from './lib/resume/prompt.mjs';
+import { RECHECK_SCHEMA, RECHECK_SYSTEM_PROMPT, docForRecheck, buildRecheckMessage, validateRecheck, applyRecheck, gapsOf } from './lib/resume/recheck.mjs';
 import { runClaude, ClaudeError, shouldStop } from './lib/resume/claude.mjs';
 
 installQuietConsole();
@@ -46,6 +47,8 @@ function readConfig(raw) {
   const stop = Number(raw.stop_at_utilization);
   return {
     cap: int(raw.daily_cap, 5, 0, 20),
+    // Rechecks of her edits: a separate budget, not counted against the daily draft cap.
+    recheckCap: int(raw.recheck_cap, 3, 0, 10),
     min: int(raw.min_score, 70, 0, 100),
     // No usable "from" means the backlog is out of scope: start from now.
     from: Number.isFinite(from) ? from : Date.now(),
@@ -159,8 +162,11 @@ async function plan(db, dry, jobId) {
     inserts.filter((i) => i.status === 'queued').length +
     requeue.length;
   const used = (await db.select('resume_drafts', `?select=id&last_attempt_at=gte.${enc(utcMidnight())}`)).length;
-  const todo = Math.max(0, Math.min(waiting, cfg.cap - used));
-  event('plan', { todo, queued: waiting, skipped, used });
+  // Edits she made that ask for a requirement recheck. Own budget; the draft cap is not touched.
+  const pending = (await db.select('resume_drafts', '?select=id&requirements_requested_at=not.is.null&status=in.(draft,approved)')).length;
+  const rechecks = Math.min(pending, cfg.recheckCap);
+  const todo = Math.max(0, Math.min(waiting, cfg.cap - used)) + rechecks;
+  event('plan', { todo, queued: waiting, skipped, used, rechecks });
   setOutput('todo', todo);
   return todo;
 }
@@ -184,7 +190,7 @@ async function draft(db, { dry, jobId, bin, binArgs }) {
   const today = now().slice(0, 10);
   const W = async (fn) => { if (!dry) await fn(); };
   const finish = dry ? async () => {} : await db.startRun('resumes');
-  const summary = { drafted: 0, failed: 0, skipped: 0, left: 0, stopped: null };
+  const summary = { drafted: 0, failed: 0, skipped: 0, left: 0, stopped: null, rechecked: 0, recheck_failed: 0 };
   const patchRow = (id, body) => W(() => db.patch('resume_drafts', `?id=eq.${id}`, { ...body, updated_at: now() }));
 
   try {
@@ -221,13 +227,24 @@ async function draft(db, { dry, jobId, bin, binArgs }) {
     const master = await masterOf(version);
     if (!master) throw Object.assign(new Error('master'), { code: 'no_master' });
 
+    // Rechecks of her edits run before new drafts. Own budget, shared stop rules.
+    if (!jobId) {
+      const r = await recheck(db, { dry, cfg, token, bin, binArgs, masterOf, summary, today, W });
+      if (r.exit != null) {
+        summary.stopped = r.reason === 'claude_auth' ? 'auth' : r.reason;
+        await finish(false, summary, r.reason);
+        return r.exit;
+      }
+      if (r.stop) summary.stopped = r.stop;
+    }
+
     let made = 0;
     let streak = 0;
     let done = 0;
     let exitCode = 0;
 
     for (const row of work) {
-      if (made >= budget) break;
+      if (made >= budget || summary.stopped) break;
       done++;
       const job = jobs.get(row.job_id);
       if (!job || job.closed || (!jobId && !['found', 'saved'].includes(job.status))) {
@@ -279,7 +296,7 @@ async function draft(db, { dry, jobId, bin, binArgs }) {
           summary.failed++;
           event('draft', { job: hashId(row.job_id), hard: result.hard.length, soft: result.soft.length });
         } else {
-          const gaps = result.output.requirements.filter((r) => r.status === 'gap').map((r) => ({ text: r.text, kind: r.kind, note: r.note }));
+          const gaps = gapsOf(result.output.requirements);
           const generation = (row.generation || 0) + 1;
           const suspicious = result.output.suspicious_instructions === true || result.soft.some((s) => s.code === 'suspicious_posting');
           if (row.id) {
@@ -288,6 +305,7 @@ async function draft(db, { dry, jobId, bin, binArgs }) {
               requirements: result.output.requirements, gaps, fact_flags: result.soft, suspicious,
               description_sha: desc.sha, model, drafted_at: now(), generation, reason: null,
               master_version: version, edited_at: null, approved_at: null, attempts: 0,
+              requirements_requested_at: null, requirements_checked_at: null, requirements_reason: null, requirements_attempts: 0,
             });
             await notify(db, dry, {
               kind: 'resume_draft', severity: 'action',
@@ -355,13 +373,120 @@ async function draft(db, { dry, jobId, bin, binArgs }) {
     }
 
     summary.left = Math.max(0, work.length - done);
-    event('done', { drafted: summary.drafted, failed: summary.failed, skipped: summary.skipped, left: summary.left, stopped: summary.stopped ?? 'none' });
+    event('done', { drafted: summary.drafted, failed: summary.failed, skipped: summary.skipped, left: summary.left, rechecked: summary.rechecked, recheck_failed: summary.recheck_failed, stopped: summary.stopped ?? 'none' });
     await finish(true, summary);
     return exitCode;
   } catch (e) {
     await finish(false, summary, safeCode(e)).catch(() => {});
     throw e;
   }
+}
+
+/**
+ * Recheck the requirement status of drafts she edited, against the edited CV only.
+ * Writes are compare-and-swap on updated_at and requirements_requested_at and never
+ * touch updated_at, so an edit she is making right now is not lost and does not fail
+ * with "This draft changed". Returns {} or { stop } or { exit, reason }.
+ */
+async function recheck(db, { dry, cfg, token, bin, binArgs, masterOf, summary, today, W }) {
+  if (cfg.recheckCap === 0) return {};
+  const rows = await db.select(
+    'resume_drafts',
+    `?select=id,job_id,master_version,doc,requirements,updated_at,requirements_requested_at,requirements_attempts&requirements_requested_at=not.is.null&status=in.(draft,approved)&order=requirements_requested_at.asc&limit=${cfg.recheckCap}`
+  );
+  let streak = 0;
+  for (const row of rows) {
+    const cas = `?id=eq.${row.id}&updated_at=eq.${enc(row.updated_at)}&requirements_requested_at=eq.${enc(row.requirements_requested_at)}`;
+    const write = (body) => W(() => db.patch('resume_drafts', cas, body));
+    const reqs0 = Array.isArray(row.requirements) ? row.requirements : [];
+    if (!reqs0.length || reqs0.length > 40 || !row.doc) {
+      await write({ requirements_requested_at: null });
+      continue;
+    }
+    const { refs } = docForRecheck(row.doc);
+    try {
+      let feedback = '';
+      let reqs = null;
+      let flags = null;
+      let rate = null;
+      for (let pass = 0; pass < 2; pass++) {
+        const nonce = randomBytes(16).toString('hex');
+        const res = await runClaude({
+          bin, binArgs, token, schema: RECHECK_SCHEMA, system: RECHECK_SYSTEM_PROMPT, model: cfg.model,
+          input: buildRecheckMessage({ doc: row.doc, requirements: reqs0, nonce, feedback }),
+        });
+        rate = res.rate;
+        const valid = validateRecheck(res.output, reqs0, refs);
+        if (!valid.ok) { feedback = buildFeedback([{ code: 'schema_invalid', ref: valid.ref }]); continue; }
+        const next = applyRecheck(reqs0, res.output, refs);
+        // The posting and company are read for this scan only and are never sent to Claude.
+        const [job] = await db.select('jobs', `?select=company,title&id=eq.${enc(row.job_id)}`);
+        const [desc] = await db.select('job_descriptions', `?select=description&job_id=eq.${enc(row.job_id)}`);
+        const facts = checkFacts({
+          doc: row.doc, master: (await masterOf(row.master_version)) || {}, job: job || {},
+          description: desc?.description || '', requirements: next,
+        });
+        const badNotes = facts.hard.filter((h) => String(h.ref).startsWith('requirements.'));
+        if (badNotes.length) { feedback = buildFeedback(badNotes); continue; }
+        reqs = next;
+        flags = [...facts.hard, ...facts.soft];
+        break;
+      }
+      if (reqs) {
+        await write({
+          requirements: reqs, gaps: gapsOf(reqs), fact_flags: flags,
+          requirements_requested_at: null, requirements_checked_at: now(), requirements_reason: null, requirements_attempts: 0,
+        });
+        summary.rechecked++;
+        event('recheck', { job: hashId(row.job_id) });
+      } else {
+        await write({ requirements_requested_at: null, requirements_reason: 'recheck_invalid', requirements_attempts: 0 });
+        summary.recheck_failed++;
+        event('recheck', { job: hashId(row.job_id), code: 'recheck_invalid' });
+      }
+      streak = 0;
+      const stop = shouldStop(rate, cfg.stopAt);
+      if (stop) {
+        if (stop === 'overage') {
+          await notify(db, dry, {
+            kind: 'resume_overage', severity: 'action',
+            title: 'Resume drafting stopped: usage credits are in use',
+            body: 'Check your Claude usage settings before drafting resumes again.',
+            url: '/resumes', entity_ref: 'claude_overage', dedupe_key: `resume_overage:${today}`,
+          });
+        }
+        return { stop };
+      }
+    } catch (e) {
+      if (!(e instanceof ClaudeError)) throw e;
+      if (e.code === 'usage_limit') return { stop: 'usage_limit' };
+      if (e.code === 'auth') {
+        await notify(db, dry, {
+          kind: 'resume_auth', severity: 'action',
+          title: 'Resume drafting cannot sign in to Claude',
+          body: 'Create a new token with claude setup-token and update the repository secret.',
+          url: '/resumes', entity_ref: 'claude_token', dedupe_key: `resume_auth:${today}`,
+        });
+        return { exit: 1, reason: 'claude_auth' };
+      }
+      if (e.code === 'tool_drift') {
+        await write({ requirements_requested_at: null, requirements_reason: 'tool_drift' });
+        summary.recheck_failed++;
+        return { exit: 1, reason: 'tool_drift' };
+      }
+      // timeout, transient, cli_error, no_output, output_too_large, spawn_failed
+      event('recheck', { job: hashId(row.job_id), code: e.code });
+      const attempts = (row.requirements_attempts || 0) + 1;
+      if (attempts >= 3) {
+        await write({ requirements_requested_at: null, requirements_reason: e.code, requirements_attempts: 0 });
+        summary.recheck_failed++;
+      } else {
+        await write({ requirements_attempts: attempts });
+      }
+      if (++streak >= 2) return { stop: 'repeated_errors' };
+    }
+  }
+  return {};
 }
 
 /** The manually dispatched job id, read from the event file so it is never printed. */

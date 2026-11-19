@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateDraft } from './schema.mjs';
+import { validateDraft, walk } from './schema.mjs';
 import { goodOutput } from './fixtures/load.mjs';
 
 test('a good answer is valid', () => {
@@ -35,4 +35,15 @@ test('missing required fields, wrong types and empty lists are rejected', () => 
   assert.equal(validateDraft(c).ok, false);
   assert.equal(validateDraft(null).ok, false);
   assert.equal(validateDraft([]).ok, false);
+});
+
+test('walk: integer type with minimum and maximum', () => {
+  const s = { type: 'integer', minimum: 0, maximum: 39 };
+  assert.equal(walk(s, 0, '$'), null);
+  assert.equal(walk(s, 39, '$'), null);
+  assert.equal(walk(s, -1, '$'), '$');
+  assert.equal(walk(s, 40, '$'), '$');
+  assert.equal(walk(s, 1.5, '$'), '$');
+  assert.equal(walk(s, '1', '$'), '$');
+  assert.equal(walk({ type: 'integer' }, 7, '$'), null);
 });

@@ -11,7 +11,7 @@ import { ApplicationTab } from './ApplicationTab'
 import { Cv } from '../Cv'
 import { CvPreview } from '../CvPreview'
 import { carlito } from '../cvFont'
-import { approveResume, rejectResume, requeueResume, editResumeField } from '../../actions'
+import { approveResume, rejectResume, requeueResume, cancelRequeue, editResumeField } from '../../actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,8 +87,16 @@ export default async function ResumeReview({
   const flagCount = d.fact_flags?.length ?? 0
   const gapCount = d.gaps?.length ?? 0
   const reqs = d.requirements ?? []
+  const recheckNote = d.requirements_requested_at
+    ? 'Requirements are rechecked on the next run.'
+    : d.requirements_reason
+      ? 'Requirements could not be rechecked after your last edit. Edit again or draft again.'
+      : null
   const reqMet = reqs.filter((r) => r.status === 'met').length
   const canRedraft = ['draft', 'discarded', 'failed', 'skipped'].includes(d.status)
+  const redraftConfirm =
+    (d.edited_at ? 'This replaces your edits. ' : '') +
+    'Draft this resume again from scratch? It goes to the queue and is redrafted on the next run, usually the next morning.'
 
   // Neighbours among the drafts still to review. A draft already approved is not in
   // the queue, so it only offers the first one.
@@ -137,9 +145,11 @@ export default async function ResumeReview({
         <>
         {doc && (
           <nav className="summary-strip" aria-label="Draft summary">
+            {live && <a href="#draft">Edit resume</a>}
             {reqs.length > 0 && (
               <a href="#requirements">{reqMet} of {reqs.length} requirements covered</a>
             )}
+            {recheckNote && <span className="card-meta">{recheckNote}</span>}
             <a href="#gaps">{gapCount} gap{gapCount === 1 ? '' : 's'}</a>
             <a href="#flags">{flagCount} flag{flagCount === 1 ? '' : 's'}</a>
           </nav>
@@ -166,8 +176,9 @@ export default async function ResumeReview({
                 Download PDF
               </a>
             )}
+            {live && doc && <a className="btn" href="#draft">Edit</a>}
             {canRedraft && (
-              <ActionButton action={requeueResume.bind(null, d.id)} confirm={d.edited_at ? 'This replaces your edits.' : undefined}>
+              <ActionButton action={requeueResume.bind(null, d.id)} confirm={redraftConfirm}>
                 Draft again
               </ActionButton>
             )}
@@ -179,9 +190,15 @@ export default async function ResumeReview({
         {olderMaster && (
           <div className="notice">
             Drafted from an older version of your CV.{' '}
-            <ActionButton action={requeueResume.bind(null, d.id)} confirm={d.edited_at ? 'This replaces your edits.' : undefined}>
+            <ActionButton action={requeueResume.bind(null, d.id)} confirm={redraftConfirm}>
               Draft again
             </ActionButton>
+          </div>
+        )}
+        {d.status === 'queued' && doc && (
+          <div className="notice">
+            Waiting to be drafted again on the next run, usually the next morning.{' '}
+            <ActionButton action={cancelRequeue.bind(null, d.id)}>Keep the old draft</ActionButton>
           </div>
         )}
         {postingChanged && <div className="notice">The posting changed after this draft was made.</div>}
@@ -200,7 +217,7 @@ export default async function ResumeReview({
                 </div>
               </details>
 
-              <h2>Draft</h2>
+              <h2 id="draft" className="anchor">Draft</h2>
               <p className="sub">Employers, titles and dates come from your CV and cannot be changed here.</p>
               <p className="sub legend">
                 <mark className="diff-add">Dotted underline</mark> marks wording that is not in your CV.{' '}
@@ -291,6 +308,7 @@ export default async function ResumeReview({
           <div id="requirements" className="anchor">
           <Section title="Requirements">
             <div className="card stack tight">
+              {recheckNote && <span className="card-meta">{recheckNote}</span>}
               {d.requirements!.map((r, i) => (
                 <div key={i} className="row">
                   <StatusBadge status={`req_${r.status}`} />

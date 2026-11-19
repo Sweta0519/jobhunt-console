@@ -34,7 +34,7 @@ Fields:
 
 The master was last tailored for a role at n8n, so it leans on n8n. Unless the posting is about n8n or workflow automation, treat n8n as one tool among others and one community among others: do not lead with it in the tagline, summary or skills. Do not remove the underlying facts when they are relevant.`;
 
-const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+export const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
 
 /** What Claude may see of the master: no name, no contact row, no links. */
 export function masterForPrompt(master) {

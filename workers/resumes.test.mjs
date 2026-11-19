@@ -13,7 +13,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startStub } from './lib/resume/fixtures/stub-db.mjs';
-import { syntheticMaster } from './lib/resume/fixtures/load.mjs';
+import { syntheticMaster, goodOutput } from './lib/resume/fixtures/load.mjs';
+import { composeDoc } from './lib/resume/compose.mjs';
 
 const WORKER = fileURLToPath(new URL('./resumes.mjs', import.meta.url));
 const FAKE = fileURLToPath(new URL('./lib/resume/fixtures/fake-claude-pipeline.mjs', import.meta.url));
@@ -110,7 +111,7 @@ test('success: drafts, stores, notifies, logs no canary', async () => {
     assert.equal(state.tables.notifications[0].dedupe_key, 'resume:draft-1:1');
     assert.ok(!JSON.stringify(state.tables.notifications).includes(DRAFT));
     assert.equal(state.tables.runs[0].ok, true);
-    assert.deepEqual(Object.keys(state.tables.runs[0].summary).sort(), ['drafted', 'failed', 'left', 'skipped', 'stopped']);
+    assert.deepEqual(Object.keys(state.tables.runs[0].summary).sort(), ['drafted', 'failed', 'left', 'recheck_failed', 'rechecked', 'skipped', 'stopped']);
   });
 });
 
@@ -379,5 +380,210 @@ test('a manually dispatched job id comes from the event payload and is never pri
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// --- requirement rechecks after her edits --------------------------------------------
+const UPD = '2026-11-19T10:00:00.123456+00:00';
+const REQS = () => [
+  { text: 'REST API debugging', kind: 'must', status: 'gap', evidence: [], note: 'old note' },
+  { text: 'Kubernetes', kind: 'nice', status: 'gap', evidence: [], note: '' },
+];
+
+/** An edited draft with a recheck pending. The marker in the summary drives the fake CLI. */
+function addEdited(state, countFile, scenarioName, i, extra = {}) {
+  const doc = composeDoc(state.tables.master_cv[0].doc, goodOutput());
+  doc.summary = `SCENARIO=${scenarioName} COUNTFILE=${countFile} edited by her`;
+  const jobId = `ashby:acme:e${i}`;
+  addJob(state, jobId);
+  const row = {
+    id: `e-${i}`, owner: PRIMARY, job_id: jobId, master_version: 1, status: 'draft', attempts: 0, generation: 1,
+    last_attempt_at: null, doc, requirements: REQS(), gaps: REQS().map(({ text, kind, note }) => ({ text, kind, note })),
+    fact_flags: [], updated_at: UPD, requirements_requested_at: iso(NOW - 60_000 * (10 - i)), requirements_attempts: 0, requirements_reason: null,
+    ...extra,
+  };
+  state.tables.resume_drafts.push(row);
+  return row;
+}
+const rowOf = (state, i) => state.tables.resume_drafts.find((d) => d.id === `e-${i}`);
+
+test('recheck: an empty queue with the cap used still plans one run; statuses are updated without touching updated_at, doc or last_attempt_at', async () => {
+  await scenario({ jobs: 0, cap: 1 }, async ({ state, url, countFile, calls }) => {
+    state.tables.resume_drafts.push({ id: 'used', owner: PRIMARY, job_id: 'x:y:z', master_version: 1, status: 'failed', attempts: 0, generation: 0, last_attempt_at: iso(Date.now()) });
+    const e = addEdited(state, countFile, 'recheck_ok', 1, { last_attempt_at: iso(NOW - 86_400_000 * 3) });
+    const before = JSON.stringify(e.doc);
+    const lastAttempt = e.last_attempt_at;
+    const plan = await exec(['--plan'], url);
+    assert.match(plan.out, /plan todo=1 .*rechecks=1/);
+    assert.match(plan.gh, /todo=1/);
+    noCanary(plan.out, 'plan');
+    const r = await exec(draftArgs, url, draftEnv);
+    assert.equal(r.code, 0, r.out);
+    noCanary(r.out, 'recheck');
+    assert.equal(calls(), 1);
+    const d = rowOf(state, 1);
+    assert.deepEqual(d.requirements.map((q) => q.status), ['met', 'met']);
+    assert.deepEqual(d.requirements.map((q) => q.text), ['REST API debugging', 'Kubernetes']);
+    assert.deepEqual(d.gaps, []);
+    assert.equal(d.requirements_requested_at, null);
+    assert.ok(d.requirements_checked_at);
+    assert.equal(d.requirements_reason, null);
+    assert.equal(d.updated_at, UPD);
+    assert.equal(JSON.stringify(d.doc), before);
+    assert.equal(d.last_attempt_at, lastAttempt);
+    assert.equal(d.status, 'draft');
+    assert.equal(state.tables.notifications.length, 0);
+    assert.match(r.out, /recheck job=[0-9a-f]{10}\n/);
+    assert.equal(state.tables.runs[0].summary.rechecked, 1);
+    const patch = state.requests.find((q) => q.method === 'PATCH' && q.table === 'resume_drafts');
+    assert.ok(patch.query.includes('updated_at=eq.') && patch.query.includes('requirements_requested_at=eq.'));
+    assert.ok(!('updated_at' in patch.body));
+  });
+});
+
+test('recheck race: an edit between read and write wins, the new request stays pending', async () => {
+  let hit = false;
+  const NEWER = '2026-11-19T11:00:00.000000+00:00';
+  let state0;
+  const hooks = { PATCH: (table, body) => {
+    if (table === 'resume_drafts' && body.requirements && !hit) {
+      hit = true;
+      const d = state0.tables.resume_drafts.find((x) => x.id === 'e-1');
+      d.updated_at = NEWER; d.requirements_requested_at = NEWER;
+    }
+    return null;
+  } };
+  await scenario({ jobs: 0, hooks }, async ({ state, url, countFile }) => {
+    state0 = state;
+    addEdited(state, countFile, 'recheck_ok', 1);
+    const r = await exec(draftArgs, url, draftEnv);
+    assert.equal(r.code, 0, r.out);
+    noCanary(r.out, 'race');
+    assert.ok(hit);
+    const d = rowOf(state, 1);
+    assert.deepEqual(d.requirements.map((q) => q.status), ['gap', 'gap']);
+    assert.equal(d.requirements_requested_at, NEWER);
+    assert.equal(d.updated_at, NEWER);
+  });
+});
+
+test('recheck: two bad answers leave the old requirements, clear the request, set recheck_invalid', async () => {
+  await scenario({ jobs: 0 }, async ({ state, url, countFile, calls }) => {
+    addEdited(state, countFile, 'recheck_bad', 1);
+    const r = await exec(draftArgs, url, draftEnv);
+    assert.equal(r.code, 0, r.out);
+    noCanary(r.out, 'recheck_bad');
+    assert.equal(calls(), 2);
+    const d = rowOf(state, 1);
+    assert.deepEqual(d.requirements.map((q) => q.status), ['gap', 'gap']);
+    assert.equal(d.requirements_requested_at, null);
+    assert.equal(d.requirements_reason, 'recheck_invalid');
+    assert.equal(d.requirements_attempts, 0);
+    assert.equal(d.updated_at, UPD);
+    assert.equal(state.tables.runs[0].summary.recheck_failed, 1);
+  });
+});
+
+test('recheck: a bad first answer is retried once and the second is applied', async () => {
+  await scenario({ jobs: 0 }, async ({ state, url, countFile, calls }) => {
+    addEdited(state, countFile, 'recheck_bad_once', 1);
+    const r = await exec(draftArgs, url, draftEnv);
+    assert.equal(r.code, 0, r.out);
+    noCanary(r.out, 'recheck_bad_once');
+    assert.equal(calls(), 2);
+    const d = rowOf(state, 1);
+    assert.deepEqual(d.requirements.map((q) => q.status), ['met', 'met']);
+    assert.equal(d.requirements_requested_at, null);
+    assert.equal(d.requirements_reason, null);
+  });
+});
+
+test('recheck_cap 2 with 5 pending: 2 calls, 3 still pending, plan counts 2', async () => {
+  await scenario({ jobs: 0 }, async ({ state, url, countFile, calls }) => {
+    state.tables.settings[0].value.recheck_cap = 2;
+    for (let i = 1; i <= 5; i++) addEdited(state, countFile, 'recheck_ok', i);
+    const plan = await exec(['--plan'], url);
+    assert.match(plan.out, /plan todo=2 .*rechecks=2/);
+    const r = await exec(draftArgs, url, draftEnv);
+    assert.equal(r.code, 0, r.out);
+    noCanary(r.out, 'cap');
+    assert.equal(calls(), 2);
+    assert.equal(state.tables.resume_drafts.filter((d) => d.requirements_requested_at).length, 3);
+    // oldest request first
+    assert.equal(rowOf(state, 1).requirements_requested_at, null);
+    assert.equal(rowOf(state, 2).requirements_requested_at, null);
+  });
+});
+
+test('recheck usage limit: no write, request kept, no draft attempted, exit 0', async () => {
+  await scenario({ jobs: 1 }, async ({ state, url, countFile, calls }) => {
+    addEdited(state, countFile, 'usage_limit', 1);
+    const r = await exec(draftArgs, url, draftEnv);
+    assert.equal(r.code, 0, r.out);
+    noCanary(r.out, 'recheck usage_limit');
+    assert.equal(calls(), 1, 'the draft was not attempted');
+    const d = rowOf(state, 1);
+    assert.ok(d.requirements_requested_at);
+    assert.deepEqual(d.requirements.map((q) => q.status), ['gap', 'gap']);
+    assert.ok(!state.requests.some((q) => q.method === 'PATCH' && q.table === 'resume_drafts'), 'nothing written to a draft');
+    assert.equal(draftOf(state).status, 'queued');
+    assert.equal(draftOf(state).attempts, 0);
+    assert.equal(state.tables.runs[0].ok, true);
+    assert.equal(state.tables.runs[0].summary.stopped, 'usage_limit');
+    assert.match(r.out, /stopped=usage_limit/);
+  });
+});
+
+test('recheck ignores requests on queued or discarded drafts', async () => {
+  await scenario({ jobs: 0 }, async ({ state, url, countFile, calls }) => {
+    addEdited(state, countFile, 'recheck_ok', 1, { status: 'discarded' });
+    addEdited(state, countFile, 'recheck_ok', 2, { status: 'queued', job_id: 'ashby:acme:e2' });
+    state.tables.jobs.find((j) => j.id === 'ashby:acme:e2').closed = true; // the queued row is skipped, not drafted
+    const plan = await exec(['--plan'], url);
+    assert.match(plan.out, /rechecks=0/);
+    const r = await exec(draftArgs, url, draftEnv);
+    assert.equal(r.code, 0, r.out);
+    assert.equal(calls(), 0);
+    assert.doesNotMatch(r.out, /recheck job=/);
+    assert.ok(rowOf(state, 1).requirements_requested_at);
+    assert.ok(rowOf(state, 2).requirements_requested_at);
+  });
+});
+
+test('recheck dry run: Claude is called, nothing is written', async () => {
+  await scenario({ jobs: 0 }, async ({ state, url, countFile, calls }) => {
+    addEdited(state, countFile, 'recheck_ok', 1);
+    const r = await exec(draftArgs, url, { ...draftEnv, DRY_RUN: 'true' });
+    assert.equal(r.code, 0, r.out);
+    noCanary(r.out, 'recheck dry');
+    assert.equal(calls(), 1);
+    assert.ok(rowOf(state, 1).requirements_requested_at);
+    assert.ok(!state.requests.some((q) => q.method !== 'GET'), 'no write request at all');
+  });
+});
+
+test('a successful redraft clears the recheck request', async () => {
+  await scenario({ jobs: 1 }, async ({ state, url }) => {
+    Object.assign(draftOf(state), { requirements_requested_at: iso(NOW), requirements_reason: 'timeout', requirements_attempts: 2 });
+    const r = await exec(draftArgs, url, draftEnv);
+    assert.equal(r.code, 0, r.out);
+    const d = draftOf(state);
+    assert.equal(d.status, 'draft');
+    assert.equal(d.requirements_requested_at, null);
+    assert.equal(d.requirements_checked_at, null);
+    assert.equal(d.requirements_reason, null);
+    assert.equal(d.requirements_attempts, 0);
+  });
+});
+
+test('a --job dispatch runs no recheck', async () => {
+  await scenario({ jobs: 1 }, async ({ state, url, countFile, calls }) => {
+    addEdited(state, countFile, 'recheck_ok', 1);
+    const r = await exec([...draftArgs, '--job', 'greenhouse:acme:1001'], url, draftEnv);
+    assert.equal(r.code, 0, r.out);
+    noCanary(r.out, 'job dispatch');
+    assert.equal(calls(), 1, 'only the dispatched draft');
+    assert.equal(draftOf(state).status, 'draft');
+    assert.ok(rowOf(state, 1).requirements_requested_at, 'the recheck waits for the scheduled run');
   });
 });

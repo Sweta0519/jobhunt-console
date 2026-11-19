@@ -32,6 +32,8 @@ export type ResumeDraft = {
   gaps: { text: string; kind: string; note: string }[] | null
   fact_flags: FactFlag[] | null; suspicious: boolean; description_sha: string | null
   generation: number; drafted_at: string | null; edited_at: string | null
+  requirements_requested_at: string | null; requirements_checked_at: string | null
+  requirements_reason: string | null; requirements_attempts: number
 }
 
 /** A link target is only ever https or mailto; anything else renders as plain text. */

@@ -37,6 +37,11 @@ export function walk(schema, v, path) {
       if (schema.minLength != null && v.length < schema.minLength) return path;
       if (schema.maxLength != null && v.length > schema.maxLength) return path;
       return null;
+    case 'integer':
+      if (!Number.isInteger(v)) return path;
+      if (schema.minimum != null && v < schema.minimum) return path;
+      if (schema.maximum != null && v > schema.maximum) return path;
+      return null;
     case 'boolean':
       return typeof v === 'boolean' ? null : path;
     case 'array': {

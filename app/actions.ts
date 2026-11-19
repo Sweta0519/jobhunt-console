@@ -306,6 +306,21 @@ export async function requeueResume(id: string) {
   return error ? fail('Could not queue this draft.') : ok()
 }
 
+/** Undo "Draft again" before the worker claims it: the old draft comes back. */
+export async function cancelRequeue(id: string) {
+  const { supabase } = await requireOwner()
+  const { data, error } = await supabase
+    .from('resume_drafts')
+    .update({ status: 'draft', updated_at: now() })
+    .eq('id', id)
+    .eq('status', 'queued')
+    .not('doc', 'is', null)
+    .select('id')
+  if (error) return fail('Could not keep the old draft.')
+  if (!data || data.length === 0) return fail('It is already being redrafted.')
+  return ok()
+}
+
 const MAX_EDIT = 800
 const SEG = /^[A-Za-z0-9]{1,12}$/
 const IDX = /^\d{1,2}$/
@@ -385,6 +400,7 @@ export async function editResumeField(id: string, path: string, text: string) {
       approved_at: null,
       edited_at: stamp,
       updated_at: stamp,
+      requirements_requested_at: (row.requirements as Requirement[] | null)?.length ? stamp : null,
     })
     .eq('id', id)
     .eq('updated_at', row.updated_at)

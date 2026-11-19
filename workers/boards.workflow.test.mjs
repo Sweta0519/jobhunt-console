@@ -98,7 +98,7 @@ test('in the workers that run in Actions, a console call never prints a company,
 test('resumes.mjs logs a keyed hash of the job id, never the id', () => {
   const src = read('workers/resumes.mjs');
   assert.ok(!/event\('draft', \{ job: row\.job_id/.test(src));
-  assert.equal((src.match(/hashId\(row\.job_id\)/g) || []).length, 3);
+  assert.equal((src.match(/hashId\(row\.job_id\)/g) || []).length, 6); // 3 in draft(), 3 in recheck()
   assert.notEqual(hashId('ashby:acme:1', 'k1'), hashId('ashby:acme:1', 'k2'));
   assert.match(hashId('ashby:acme:1', 'k1'), /^[0-9a-f]{10}$/);
 });

@@ -3,7 +3,7 @@ import { requirePrimary, reasonCopy, type FactFlag } from '../lib/resumes'
 import { NavBar, PageHeader, ViewTabs, Empty, StatusBadge, formatDay } from '../components/ui'
 import { ActionButton } from '../components/ActionButton'
 import { Logo } from '../components/Logo'
-import { requeueResume } from '../actions'
+import { requeueResume, cancelRequeue } from '../actions'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Resumes' }
@@ -99,15 +99,16 @@ export default async function Resumes({ searchParams }: { searchParams: Promise<
               const gaps = d.gaps?.length ?? 0
               const flags = d.fact_flags?.length ?? 0
               const open = ['draft', 'approved'].includes(d.status)
+              const linked = open || d.status === 'queued'
               const thin = d.reason === 'thin_description' || d.reason === 'no_description'
               const again = view === 'other' && (d.status !== 'skipped' || !thin)
               const when = d.drafted_at ? `drafted ${formatDay(d.drafted_at)}` : ''
               return (
-                <article key={d.id} className={`card${open ? ' card-click' : ''}`}>
+                <article key={d.id} className={`card${linked ? ' card-click' : ''}`}>
                   <div className="spread">
                     <h2 className="card-title list-title">
                       <Logo name={j.company} slug={j.company_slug} path={logos.get(j.company_slug ?? '')} />
-                      {open ? (
+                      {linked ? (
                         <Link href={`/resumes/${d.id}`} className="card-link">{j.title}</Link>
                       ) : (
                         j.title
@@ -127,6 +128,15 @@ export default async function Resumes({ searchParams }: { searchParams: Promise<
                       {d.status === 'discarded' ? 'You can draft this one again.' : reasonCopy(d.reason)}
                     </p>
                   )}
+                  {view === 'waiting' && d.status === 'queued' && (
+                    <>
+                      <p className="card-note">Waiting for the next run, usually the next morning. Keep the old draft to cancel.</p>
+                      <div className="card-actions">
+                        <ActionButton action={cancelRequeue.bind(null, d.id)}>Keep the old draft</ActionButton>
+                      </div>
+                    </>
+                  )}
+                  {view === 'waiting' && d.status === 'drafting' && <p className="card-note">Being drafted now.</p>}
                   {view === 'other' && (again || ((j.careers_url || j.url) && thin)) && (
                     <div className="card-actions">
                       {(j.careers_url || j.url) && thin && (
